@@ -1,0 +1,15 @@
+[package]
+name = "shoal-stratum"
+description = "XBT (Bitcoin BLAKE2b) Sia-dialect Stratum V1 jobs and submissions for Shoal"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+bitcoin = { workspace = true }
+hex = { workspace = true }
+lazarus-protocol = { workspace = true }
+serde_json = { workspace = true }
+shoal-header = { workspace = true }

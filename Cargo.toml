@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/shoal-header"]
+members = ["crates/shoal-header", "crates/shoal-stratum"]
 resolver = "2"
 
 [workspace.package]
@@ -16,3 +16,5 @@ bitcoin = { version = "0.32.5", features = ["serde"] }
 lazarus-protocol = { git = "https://github.com/AwokenLazarus/Lazarus-Pool.git", rev = "94b2f2cbacc6b59dd8a479e6732800fec7f72dca" }
 serde = { version = "1", features = ["derive"] }
 hex = "0.4"
+serde_json = "1"
+shoal-header = { path = "crates/shoal-header" }
