@@ -1,0 +1,37 @@
+network 50.8 PH/s, block every 536 s; sample population 201 addresses, 14.7 PH/s
+  addresses <20 TH/s: 125 of 201, 0.78 PH/s (5% of the hash)
+
+1. Income noise per month (CV), sharechain at 10 s shares vs solo
+pool PH/s block every       0.5 TH       2.3 TH        10 TH        40 TH       150 TH       500 TH
+        1       7.6 h  13.5% ( 130)  11.0% ( 596)  10.4% (2592)        10.3%        10.3%        10.2%
+        5       1.5 h  20.2% (  26)  10.2% ( 119)   6.3% ( 518)   5.1% (2074)   4.7% (7776)         4.6%
+       15       0.5 h  34.1% (   9)  16.1% (  40)   8.1% ( 173)   4.6% ( 691)   3.3% (2592)   2.9% (8640)
+     solo                 0.05 blk     0.22 blk     0.95 blk     3.81 blk    14.29 blk    47.64 blk
+   (n) = own shares per month. Solo row = expected blocks per month.
+
+   mini chain (only <20 TH/s miners, same mix as sample): 0.78 PH/s per 14.7 PH/s of pool
+   mini at 0.26 PH/s: 0.5 TH  20.6% (499/mo), 2.3 TH  20.2% (2293/mo), 10 TH  20.1% (9972/mo)
+   mini at 0.78 PH/s: 0.5 TH  14.0% (166/mo), 2.3 TH  12.2% (764/mo), 10 TH  11.7% (3324/mo)
+
+2. Distinct payees per coinbase (PPLNS window in shares) and whether they fit
+   limits: stock gateway coinbase 16960 B -> 390 P2TR / 542 P2WPKH outputs; Prime coinbaser 512; RDTS weight 800000 WU -> 4651 P2TR
+pool PH/s  window    span  payees cb KB P2TR % blk wt w/ NTA KB
+        1     720   2.0 h      12        0.7     0.3%       1.6
+        1    2160   6.0 h      13        0.7     0.4%       1.8
+        1    8640  24.0 h      14        0.7     0.4%       1.8
+        5     720   2.0 h      47        2.2     1.1%       5.9
+        5    2160   6.0 h      58        2.6     1.3%       7.2
+        5    8640  24.0 h      65        3.0     1.5%       8.1
+       15     720   2.0 h     102        4.5     2.3%      12.6
+       15    2160   6.0 h     140        6.2     3.1%      17.3
+       15    8640  24.0 h     180        7.9     3.9%      22.1
+
+3. Stale shares and relay at XBT block times (linear chain; uncles recover most of it)
+interval stale@0.3s stale@1.0s stale@2.0s MB/day/peer
+    30 s       1.0%       3.3%       6.4%         2.6
+    10 s       3.0%       9.5%      18.1%         7.9
+     5 s       5.8%      18.1%      33.0%        15.9
+     2 s      13.9%      39.3%      63.2%        39.7
+     1 s      25.9%      63.2%      86.5%        79.3
+   share size assumed 918 B (outputs are recomputed, not sent)
+   at 10 s shares a pool block carries ~544 shares at 5 PH/s, ~181 at 15 PH/s
