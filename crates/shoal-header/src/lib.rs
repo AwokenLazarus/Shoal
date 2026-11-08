@@ -139,7 +139,9 @@ impl XbtHeader {
     pub fn from_bytes(bytes: &[u8; HEADER_V2_SIZE]) -> Result<Self, encode::Error> {
         let raw_version = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
         if raw_version & V2_FLAG == 0 {
-            return Err(encode::Error::ParseFailed("not an XBT v2 header (v2 flag clear)"));
+            return Err(encode::Error::ParseFailed(
+                "not an XBT v2 header (v2 flag clear)",
+            ));
         }
         let header = Self::from_lazarus(&HeaderV2::deserialize(bytes));
         // Reject non-canonical encodings: decoding then encoding must give the same bytes.
@@ -286,7 +288,10 @@ mod tests {
         let (h, _) = header(0);
         let mut changed = h;
         changed.nonce = changed.nonce.wrapping_add(1);
-        assert_eq!(changed.validate_pow(h.target()), Err(PowError::BadProofOfWork));
+        assert_eq!(
+            changed.validate_pow(h.target()),
+            Err(PowError::BadProofOfWork)
+        );
         let mut changed = h;
         changed.v2.extranonce[15] ^= 1;
         assert_ne!(changed.block_hash(), h.block_hash());
@@ -295,7 +300,11 @@ mod tests {
         assert_ne!(changed.block_hash(), h.block_hash());
         let mut changed = h;
         changed.v2.mm_rhs[0] = 1;
-        assert_ne!(changed.block_hash(), h.block_hash(), "reserved slot is committed by h2");
+        assert_ne!(
+            changed.block_hash(),
+            h.block_hash(),
+            "reserved slot is committed by h2"
+        );
     }
 
     #[test]
