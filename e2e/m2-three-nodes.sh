@@ -20,6 +20,10 @@
 # STRATUM_DIFF / STRATUM_MAX_DIFF set the session difficulty in pool units (regtest: 1/1024 of
 # difficulty 1 each, see the fork's xbt_params.rs).
 #
+# M5 (attacks): ATTACK_NODE=<1..3> runs that node from ATTACK_BIN, e.g. a fork build with
+# `--features shoal-attack-dead-template` (every job on a fabricated XBT parent). The checker
+# reports what honest blocks paid for such shares.
+#
 # Env: KNOTS_BIN, SHOAL_NODE, SHOAL_CLI, GRIND (as m1), SECS (mining time, default 1800),
 #      THREADS (per miner, default 2), LOG_LEVEL, KILL_NODE, KILL_AT, DOWN_SECS,
 #      NETEM_MS, NETEM_JITTER_MS, STRATUM_DIFF (default 1024), STRATUM_MAX_DIFF
@@ -37,6 +41,9 @@ NETEM_MS=${NETEM_MS:-}
 NETEM_JITTER_MS=${NETEM_JITTER_MS:-0}
 STRATUM_DIFF=${STRATUM_DIFF:-1024}
 STRATUM_MAX_DIFF=${STRATUM_MAX_DIFF:-}
+ATTACK_NODE=${ATTACK_NODE:-}
+ATTACK_BIN=${ATTACK_BIN:-}
+if [ -n "$ATTACK_NODE" ] && [ ! -x "$ATTACK_BIN" ]; then echo "FAIL: ATTACK_BIN not executable"; exit 1; fi
 RUN=${RUN:-$HOME/shoal/e2e/m2-$(date -u +%Y%m%dT%H%M%SZ)}
 N=3
 rpc_port() { echo $((38510 + $1)); }
@@ -189,8 +196,9 @@ CONF
 
 declare -A NODE_PID MINER_PID KILL_ACC
 start_node() {
-  local i=$1
-  setsid timeout -k 10 $((SECS + 900)) "$SHOAL_NODE" --config "$RUN/shoal$i/config.toml" \
+  local i=$1 bin=$SHOAL_NODE
+  if [ "$i" = "$ATTACK_NODE" ]; then bin=$ATTACK_BIN; echo "node $i runs the attack build $ATTACK_BIN"; fi
+  setsid timeout -k 10 $((SECS + 900)) "$bin" --config "$RUN/shoal$i/config.toml" \
     >"$RUN/logs$i/shoal.out" 2>&1 &
   NODE_PID[$i]=$!; PIDS+=($!)
 }

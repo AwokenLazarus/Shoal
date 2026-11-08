@@ -98,7 +98,22 @@ def main() -> int:
             raise SystemExit(f"uncle {h} not found in any store")
         return f["miner_bitcoin_address"], difficulty(int(f["bits"], 16))
 
+    known_block = {}
+
+    def xbt_parent_exists(h):
+        """Whether the share's XBT parent block is one Knots knows (any branch)."""
+        prev = full(h)["bitcoin_header"]["prev_blockhash"]
+        if prev not in known_block:
+            try:
+                btc("getblockheader", prev)
+                known_block[prev] = True
+            except subprocess.CalledProcessError:
+                known_block[prev] = False
+        return known_block[prev]
+
     checked = failed = 0
+    paid_to_dead = 0
+    paid_total = 0
     all_payees = set()
     for s in sorted(shares, key=lambda s: s["height"]):
         if s["height"] == 0:
@@ -120,7 +135,10 @@ def main() -> int:
             cursor = by_hash.get(cursor["prev_blockhash"])
         weights = {}
         n_uncles = 0
+        w_dead = 0
         for w in chain[skip:]:
+            if w["height"] > 0 and not xbt_parent_exists(w["blockhash"]):
+                w_dead += 10 * difficulty(int(w["bits"]))
             bonus = 0
             for u in w["uncles"]:
                 u_addr, u_diff = uncle_info(uncle_hash(u))
@@ -148,6 +166,9 @@ def main() -> int:
             expected[addr] = amt
             distributed += amt
         checked += 1
+        if total_w:
+            paid_to_dead += total * w_dead // total_w
+        paid_total += total
         ok = expected == paid
         if not ok:
             failed += 1
@@ -160,6 +181,12 @@ def main() -> int:
         if not ok:
             print(f"  expected {expected}\n  paid     {paid}")
     print(f"payees seen across blocks: {len(all_payees)}")
+    dead_main = [h for h in by_hash if by_hash[h]["height"] > 0 and not xbt_parent_exists(h)]
+    print(
+        f"DEAD-TEMPLATE main-chain shares on a fabricated XBT parent: {len(dead_main)}; "
+        f"paid to them by real blocks: {paid_to_dead} of {paid_total} sats "
+        f"({100.0 * paid_to_dead / max(paid_total, 1):.1f}%)"
+    )
 
     # Share DAG across all stores: main chain, uncles (referenced by a main-chain share) and
     # orphans (neither). Work = integer difficulty from each share's bits.

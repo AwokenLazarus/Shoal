@@ -83,7 +83,11 @@ testnet4, mainnet, any announcement.
   headers needed to check that; each node checks carried headers itself (links, PoW, exact
   required bits). Plan: first a regtest test that shows the gap (a miner on a fabricated parent
   is paid today), then implement #652 in the fork for XBT, which needs XBT's difficulty rule
-  for the exact-bits check. Offer it upstream if they want it. Deliberately stale but real
+  for the exact-bits check. Offer it upstream if they want it.
+  XBT's rule (Knots-BLAKE2b `src/pow.cpp`, checked 2026-11-08 in ~/xbt-rnd/xbt-071/knots):
+  Bitcoin's, i.e. retarget every 2,016 blocks clamped at 4x, testnet min-difficulty blocks,
+  plus a one-time `ApplyBlake2bTargetShift` of the parent's bits at the BLAKE2b activation
+  height. Regtest does not retarget. Deliberately stale but real
   parents are out of scope there too (same damage as withholding).
 - Not yet tested: nodes with different mempools and policies (templates are local; only the
   payout is shared). Add to M4/M5: one node with a stricter policy, its blocks still pay all.
