@@ -7,6 +7,9 @@ the payee list, so there is no operator to cap, pressure or punish.
 
 A shoal is a school of fish that moves together with no leader.
 
+Shoal is written in Rust. Everything it ships is Rust: the sharechain core (a fork of P2Poolv2), the
+XBT header and PoW, and the Stratum server. The Python in `model/` is analysis only, not shipped.
+
 **Status: phase 1, design only. No code yet. Regtest and testnet4 only; nothing here is for mainnet.**
 
 | File | What |
