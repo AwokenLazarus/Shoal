@@ -17,6 +17,8 @@ XBT header and PoW, and the Stratum server. The Python in `model/` is analysis o
 | [design.md](design.md) | Sharechain format, how DATUM gateways plug in, payouts and coinbase limits, small miners, latency, attacks |
 | [plan.md](plan.md) | Phase 2: a three-miner regtest prototype |
 | [research/prior-art.md](research/prior-art.md) | Survey of P2Pool v1, P2Poolv2, Monero P2Pool, c2pool, Braidpool, Hashpool and others |
+| [crates/shoal-header](crates/shoal-header) | XBT 164-byte header v2 and block types with a rust-bitcoin-shaped API |
+| [AwokenLazarus/p2poolv2](https://github.com/AwokenLazarus/p2poolv2) (`shoal/*` branches) | The sharechain core: our fork of P2Poolv2 |
 | [model/](model/) | `sharechain_model.py`: income noise, payees per coinbase, stale rates (`python3 model/sharechain_model.py`) |
 
 ## Credits

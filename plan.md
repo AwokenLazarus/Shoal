@@ -1,6 +1,7 @@
 # Shoal — phase 2 plan (regtest prototype)
 
-Started 2026-11-08. M0 done (GO, research/fork-spike.md). Next: fork, then M1.
+Started 2026-11-08. M0 done (GO, research/fork-spike.md). Fork: github.com/AwokenLazarus/p2poolv2,
+branch `shoal/xbt-header`. Next: M1.
 
 ## Goal of phase 2
 Show, on regtest only, that three miners with **no pool operator** can mine into one sharechain,
@@ -17,8 +18,10 @@ see research/fork-spike.md).
 
 ## Code layout
 - This repository: design, model, and Shoal's own crates.
-- Sharechain core: a fork of P2Poolv2 (see design.md §2), pinned to a tag, with Shoal's changes as
-  a rebasable patch series. Never vendored source.
+- Sharechain core: github.com/AwokenLazarus/p2poolv2, a GitHub fork of P2Poolv2 based on tag v0.16.3,
+  with Shoal's changes on `shoal/*` branches as a rebasable patch series. Never vendored source.
+  Licence compliance: upstream LICENSE/AUTHORS/SPDX headers untouched, a modification notice in every
+  changed file (Apache-2.0 §4(b)), `SHOAL-CHANGES.md`, and a not-affiliated notice.
 - `lazarus-protocol` from AwokenLazarus/Bitcoin (MIT) as a git dependency: BLAKE2b header v2, PoW,
   Sia-dialect Stratum job building. Never copied.
 - Docs that use FlyTheElephant's datum_gateway credit it.
