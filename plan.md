@@ -5,7 +5,13 @@ miner speaking XBT's ASIC dialect mines through Shoal on regtest; every block is
 and its coinbase pays the sharechain's PPLNS split to the satoshi (independent checker
 `e2e/verify_pplns.py`; runs of 6 and 5 blocks, all OK). The fork's whole workspace test suite passes
 on XBT (1,588 tests). Fork: github.com/AwokenLazarus/p2poolv2, branch `shoal/xbt-header`.
-Next: M2 (three nodes).
+**M2 done** (2026-11-08, `e2e/m2-three-nodes.sh`): three Shoal nodes, each with its own Knots
+node and CPU miner. Node 1 started the sharechain and nodes 2 and 3 joined over p2p, synced, then
+served work. In a 31-minute run, 19 blocks were found by all three miners, none rejected, and the
+three nodes ended on the same sharechain tip. Every coinbase matched the checker to the satoshi,
+with regtest's 12-share window sliding and its maturity skip applied; the last blocks paid all
+three miners. No uncles came up (shares about 85 s apart); uncles are tested in M4.
+Next: M3 (kill a node).
 
 ## Goal of phase 2
 Show, on regtest only, that three miners with **no pool operator** can mine into one sharechain,
@@ -46,13 +52,15 @@ see research/fork-spike.md).
 Mini chain (config only), output elision, LZT1 in shares, NTA compatibility, Lightning,
 testnet4, mainnet, any announcement.
 
-## Carried into M2
-- `verify_pplns.py` must mirror P2Poolv2's `COINBASE_MATURITY` (6,048 shares): past that length the
-  most recent shares are left out of the window.
+## Carried into M3/M4
+- Regtest sharechain parameters (fork `xbt_params.rs`): PPLNS window 12 shares, maturity 4,
+  and a 64-entry cache buffer. `verify_pplns.py` mirrors the window, the maturity skip and
+  uncle weighting (9/10 to the uncle's miner, 1/10 to the including share's miner).
 - Stratum difficulty is an integer with a floor of 1 (about 2^32 hashes), so a CPU miner finds a
-  share about every 90 s. Enough for M2's agreement checks; M4's latency tests want more shares,
-  so consider a regtest-only fractional difficulty there.
-- One RPC call at node start gets "Method not found" from Knots; harmless so far, identify it.
+  share about every 4 minutes at 2 threads. M4's latency and uncle tests want more shares: add a
+  regtest-only fractional difficulty.
+- The start-up "Method not found" is `getdifficulty`, which Knots-BLAKE2b doesn't have. Upstream
+  calls it once, only to log the network difficulty. Harmless.
 
 ## Risks to watch
 - Real BLAKE2b ASIC firmware vs our Stratum: regtest only has CPU miners; test against one real
