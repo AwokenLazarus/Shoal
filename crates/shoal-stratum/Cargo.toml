@@ -13,3 +13,6 @@ hex = { workspace = true }
 lazarus-protocol = { workspace = true }
 serde_json = { workspace = true }
 shoal-header = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
