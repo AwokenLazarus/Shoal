@@ -1,6 +1,6 @@
 # Shoal — phase 2 plan (regtest prototype)
 
-Not started. Phase 2 begins once the phase 1 verdict is accepted.
+Started 2026-11-08. M0 part 1 (reading) done; part 2 waits for the lab VM.
 
 ## Goal of phase 2
 Show, on regtest only, that three miners with **no pool operator** can mine into one sharechain,
@@ -19,15 +19,15 @@ see research/fork-spike.md).
 - This repository: design, model, and Shoal's own crates.
 - Sharechain core: a fork of P2Poolv2 (see design.md §2), pinned to a tag, with Shoal's changes as
   a rebasable patch series. Never vendored source.
-- `prime/wire` and `prime/tides` from AwokenLazarus/Bitcoin (MIT) as git dependencies: DATUM Prime
-  protocol, BLAKE2b v2 PoW, share rebuild. Never copied.
+- `lazarus-protocol` from AwokenLazarus/Bitcoin (MIT) as a git dependency: BLAKE2b header v2, PoW,
+  Sia-dialect Stratum job building. Never copied.
 - Docs that use FlyTheElephant's datum_gateway credit it.
 
 ## Milestones
 
 | # | What | Proves | Done when |
 |---|---|---|---|
-| M0 | Fork-base spike part 2 (2 days; part 1 done in research/fork-spike.md): baseline `cargo test -p p2poolv2_lib` at v0.16.3, then swap in an `XbtHeader` type behind the existing API and rerun | The fork is viable as a patch series | Go: fork. No-go: own sharechain on `prime/wire` with Monero's rules |
+| M0 | Fork-base spike part 2 (2 days; part 1 done in research/fork-spike.md): baseline `cargo test -p p2poolv2_lib` at v0.16.3, then swap in an `XbtHeader` type behind the existing API and rerun | The fork is viable as a patch series | Go: fork. No-go: own sharechain on `lazarus-protocol` with Monero's rules |
 | M1 | `shoald` on XBT: GBT with the `blake2b` rule, Sia-dialect Stratum V1 (from our `lazarus-protocol`), BLAKE2b share PoW; one CPU/ASIC-emulating miner | One miner, shares form a chain, blocks pay the window | A regtest block's coinbase equals `PPLNS(parent)` to the sat |
 | M2 | Three nodes: gossip, parent/uncle links, fork choice by work, retarget, short PPLNS window on regtest (e.g. 60 shares) | Nodes agree | 30 min run: identical sharechain tips; every block found by any node pays all 3 by share weight, checked by an independent script that reads only the chain and the published shares |
 | M3 | No operator | Any node can die | Kill any one node mid-run: the other two keep mining and paying; the restarted node resyncs from peers |
