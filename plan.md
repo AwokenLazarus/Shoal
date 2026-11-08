@@ -75,11 +75,16 @@ testnet4, mainnet, any announcement.
 - Phase 3: real networks need their genesis time and target chosen at launch (as upstream does
   for its testnet4 relaunches); a months-old genesis pins ASERT at the easiest target.
 - **M5 attack to test first: work on a dead template.** Share validation checks the payout,
-  the coinbase-to-header link and the share's PoW, but nothing ties the share's XBT header to
-  the real chain (prev block = a recent XBT block, bits = that height's network target). A miner
-  could earn shares on work that can never be a block (a withholding equivalent). A fix must stay
-  deterministic across nodes, so not "is it my node's tip right now". Options: a header-chain
-  commitment checked against Knots with a depth allowance, or v1-style penalties in fork choice.
+  the coinbase-to-header link and the share's PoW, but nothing ties the share's XBT header to the
+  real chain, so a miner can earn PPLNS weight on a fabricated or hostile-fork XBT parent block.
+  Upstream has the same gap and a design for it, not yet implemented in v0.16.3 or upstream main
+  (2026-11-08): `docs/architecture/mine-on-bitcoin-chain.md` (issue #652). A share is paid only
+  if its XBT parent is on the paying share's XBT chain or one block off it; shares carry the XBT
+  headers needed to check that; each node checks carried headers itself (links, PoW, exact
+  required bits). Plan: first a regtest test that shows the gap (a miner on a fabricated parent
+  is paid today), then implement #652 in the fork for XBT, which needs XBT's difficulty rule
+  for the exact-bits check. Offer it upstream if they want it. Deliberately stale but real
+  parents are out of scope there too (same damage as withholding).
 - Not yet tested: nodes with different mempools and policies (templates are local; only the
   payout is shared). Add to M4/M5: one node with a stricter policy, its blocks still pay all.
 - The start-up "Method not found" is `getdifficulty`, which Knots-BLAKE2b doesn't have. Upstream
