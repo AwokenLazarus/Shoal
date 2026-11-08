@@ -19,8 +19,9 @@ mainnet, and the node refuses testnet4 and mainnet until XBT anchors are chosen.
 | M0 fork spike | Done: P2Poolv2 forked, XBT header behind its API ([research/fork-spike.md](research/fork-spike.md)) |
 | M1 one miner | Done: XBT ASIC-dialect Stratum, every block accepted by Knots, coinbase = sharechain PPLNS to the satoshi |
 | M2 three nodes | Done: three nodes, 31 minutes, 19 blocks from three miners, identical sharechain tips, every payout exact |
-| M3 kill a node | Next |
-| M4–M6 | Latency and uncles, attacks, report ([plan.md](plan.md)) |
+| M3 kill a node | Done: the founding node hard-killed mid-run; the other two kept mining and paying it, and it resynced in 2 s on restart |
+| M4 latency and uncles | Next |
+| M5–M6 | Attacks, report ([plan.md](plan.md)) |
 
 The fork's full test suite passes on XBT (1,589 tests).
 

@@ -8,8 +8,13 @@
 #
 # Regtest only. Own datadirs and ports; everything runs under a time cap and is stopped on exit.
 #
+# M3 (no operator): KILL_NODE=<1..3> kills that Shoal node and its miner with SIGKILL at
+# KILL_AT seconds (default 600), keeps it down DOWN_SECS (default 300), then restarts it on the
+# same store; it must resync from its peers before serving work again. The other two keep mining.
+# Every node dials every other, so any node can die, including node 1, which started the chain.
+#
 # Env: KNOTS_BIN, SHOAL_NODE, SHOAL_CLI, GRIND (as m1), SECS (mining time, default 1800),
-#      THREADS (per miner, default 2), LOG_LEVEL
+#      THREADS (per miner, default 2), LOG_LEVEL, KILL_NODE, KILL_AT, DOWN_SECS
 set -euo pipefail
 KNOTS_BIN=${KNOTS_BIN:-$HOME/xbt-lab/prefix/bin}
 SHOAL_NODE=${SHOAL_NODE:-$HOME/shoal/p2poolv2/target/debug/p2poolv2}
@@ -17,6 +22,9 @@ SHOAL_CLI=${SHOAL_CLI:-$HOME/shoal/p2poolv2/target/debug/p2poolv2_cli}
 GRIND=${GRIND:-$HOME/shoal/shoal/target/release/shoal-grind}
 SECS=${SECS:-1800}
 THREADS=${THREADS:-2}
+KILL_NODE=${KILL_NODE:-}
+KILL_AT=${KILL_AT:-600}
+DOWN_SECS=${DOWN_SECS:-300}
 RUN=${RUN:-$HOME/shoal/e2e/m2-$(date -u +%Y%m%dT%H%M%SZ)}
 N=3
 rpc_port() { echo $((38510 + $1)); }
@@ -40,6 +48,7 @@ trap cleanup EXIT
 trap 'exit 130' INT; trap 'exit 143' TERM; trap 'exit 129' HUP
 
 cli() { local i=$1; shift; "$KNOTS_BIN/bitcoin-cli" -datadir="$RUN/node$i" "$@"; }
+accepted() { local n; n=$(grep -c '^accepted' "$RUN/logs$1/grind.log" 2>/dev/null) || true; echo "${n:-0}"; }
 
 # --- Knots: node 1 listens, nodes 2 and 3 connect to it -------------------------------------
 for i in $(seq $N); do
@@ -145,7 +154,7 @@ port = $(api_port "$i")
 CONF
 }
 
-declare -A NODE_PID MINER_PID
+declare -A NODE_PID MINER_PID KILL_ACC
 start_node() {
   local i=$1
   setsid timeout -k 10 $((SECS + 900)) "$SHOAL_NODE" --config "$RUN/shoal$i/config.toml" \
@@ -165,13 +174,23 @@ wait_stratum() {
 start_miner() {
   local i=$1 secs=$2
   setsid timeout -k 5 "$secs" "$GRIND" --port "$(stratum_port "$i")" --user "${PAYOUT[$i]}.cpu$i" \
-    --pass "p2p=${SHARE_ADDR[$i]}" --threads "$THREADS" --secs "$secs" >"$RUN/logs$i/grind.log" 2>&1 &
+    --pass "p2p=${SHARE_ADDR[$i]}" --threads "$THREADS" --secs "$secs" >>"$RUN/logs$i/grind.log" 2>&1 &
   MINER_PID[$i]=$!; PIDS+=($!)
 }
+dial_others() {  # TOML list of every other node's share p2p address
+  local i=$1 j out=""
+  for j in $(seq $N); do
+    [ "$j" = "$i" ] && continue
+    out="$out${out:+, }\"/ip4/127.0.0.1/tcp/$(share_port "$j")\""
+  done
+  echo "$out"
+}
+
 START_HEIGHT=$(cli 1 getblockcount)
 T0=$(date +%s)
+END_AT=$((T0 + SECS))
 # Node 1 starts the sharechain: nobody to sync from.
-write_config 1 false ""
+write_config 1 false "$(dial_others 1)"
 start_node 1
 wait_stratum 1 90
 echo "node 1 stratum up"
@@ -179,29 +198,54 @@ start_miner 1 "$SECS"
 # Wait for node 1's first share so the chain tip is current, then let nodes 2 and 3 join and
 # sync before they serve work (upstream's default wait_for_chain_sync = true).
 for _ in $(seq 600); do
-  [ "$(grep -c '^accepted' "$RUN/logs1/grind.log" 2>/dev/null || echo 0)" -ge 1 ] && break
+  [ "$(accepted 1)" -ge 1 ] 2>/dev/null && break
   sleep 1
 done
 echo "node 1 first share after $(( $(date +%s) - T0 )) s"
-DIAL="\"/ip4/127.0.0.1/tcp/$(share_port 1)\""
 for i in $(seq 2 $N); do
-  write_config "$i" true "$DIAL"
+  write_config "$i" true "$(dial_others "$i")"
   start_node "$i"
 done
 for i in $(seq 2 $N); do
   wait_stratum "$i" 300
   echo "node $i synced, stratum up after $(( $(date +%s) - T0 )) s"
-  start_miner "$i" $(( SECS - ($(date +%s) - T0) ))
+  start_miner "$i" $(( END_AT - $(date +%s) ))
 done
 
-# Progress every 5 minutes.
-while kill -0 "${MINER_PID[1]}" 2>/dev/null; do
-  sleep 300 & wait $! || true
-  line="t+$(( $(date +%s) - T0 ))s blocks=$(( $(cli 1 getblockcount) - START_HEIGHT ))"
-  for i in $(seq $N); do
-    line="$line m$i=$(grep -c '^accepted' "$RUN/logs$i/grind.log" 2>/dev/null || echo 0)"
-  done
-  echo "$line"
+progress() {
+  local line="t+$(( $(date +%s) - T0 ))s blocks=$(( $(cli 1 getblockcount) - START_HEIGHT ))" i
+  for i in $(seq $N); do line="$line m$i=$(accepted "$i")"; done
+  echo "$line${1:+ $1}"
+}
+KILLED=0 RESTARTED=0 NEXT_PROGRESS=$((T0 + 300))
+while [ "$(date +%s)" -lt "$END_AT" ]; do
+  sleep 5
+  now=$(date +%s)
+  if [ -n "$KILL_NODE" ] && [ "$KILLED" = 0 ] && [ "$now" -ge $((T0 + KILL_AT)) ]; then
+    kill -KILL -- "-${MINER_PID[$KILL_NODE]}" 2>/dev/null || true
+    kill -KILL -- "-${NODE_PID[$KILL_NODE]}" 2>/dev/null || true
+    KILLED=$now KILL_HEIGHT=$(cli 1 getblockcount)
+    for i in $(seq $N); do KILL_ACC[$i]=$(accepted "$i"); done
+    progress "KILLED node $KILL_NODE (SIGKILL, node and miner)"
+  fi
+  if [ "$KILLED" != 0 ] && [ "$RESTARTED" = 0 ] && [ "$now" -ge $((KILLED + DOWN_SECS)) ]; then
+    DOWN_BLOCKS=$(( $(cli 1 getblockcount) - KILL_HEIGHT ))
+    DOWN_SHARES=""
+    for i in $(seq $N); do DOWN_SHARES="$DOWN_SHARES m$i+$(( $(accepted "$i") - KILL_ACC[$i] ))"; done
+    progress "while node $KILL_NODE was down: $DOWN_BLOCKS blocks,$DOWN_SHARES shares"
+    # Same store, upstream's default: sync from peers before serving work.
+    write_config "$KILL_NODE" true "$(dial_others "$KILL_NODE")"
+    start_node "$KILL_NODE"
+    if wait_stratum "$KILL_NODE" 300; then
+      RESTARTED=$(date +%s)
+      progress "node $KILL_NODE restarted, resynced and serving after $((RESTARTED - KILLED - DOWN_SECS)) s"
+      start_miner "$KILL_NODE" $(( END_AT - RESTARTED ))
+    else
+      RESTARTED=-1
+      echo "FAIL: node $KILL_NODE did not come back"
+    fi
+  fi
+  if [ "$now" -ge "$NEXT_PROGRESS" ]; then progress; NEXT_PROGRESS=$((NEXT_PROGRESS + 300)); fi
 done
 for i in $(seq $N); do wait "${MINER_PID[$i]}" 2>/dev/null || true; done
 # Let the last shares propagate before stopping the nodes.
@@ -225,4 +269,8 @@ set +e
 python3 "$(dirname "$0")/verify_pplns.py" --cli "$SHOAL_CLI" "${DBS[@]}" \
   --bitcoin-cli "$KNOTS_BIN/bitcoin-cli" --datadir "$RUN/node1" --network regtest | tee "$RUN/pplns.txt"
 set -e
-echo "RESULT blocks=$((END_HEIGHT - START_HEIGHT)) $(tail -1 "$RUN/pplns.txt")"
+M3=""
+if [ -n "$KILL_NODE" ]; then
+  M3=" killed=node$KILL_NODE down_blocks=${DOWN_BLOCKS:-?} restarted=$([ "$RESTARTED" -gt 0 ] && echo yes || echo NO)"
+fi
+echo "RESULT blocks=$((END_HEIGHT - START_HEIGHT)) $(tail -1 "$RUN/pplns.txt")$M3"

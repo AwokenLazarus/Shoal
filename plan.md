@@ -11,7 +11,13 @@ served work. In a 31-minute run, 19 blocks were found by all three miners, none 
 three nodes ended on the same sharechain tip. Every coinbase matched the checker to the satoshi,
 with regtest's 12-share window sliding and its maturity skip applied; the last blocks paid all
 three miners. No uncles came up (shares about 85 s apart); uncles are tested in M4.
-Next: M3 (kill a node).
+**M3 done** (2026-11-08, `KILL_NODE=1 e2e/m2-three-nodes.sh`): every node dials every other.
+At 10 minutes node 1, the node that started the sharechain, was killed with SIGKILL along with its
+miner. The other two kept mining; a block found while it was down paid the window, node 1's
+earlier shares included. After 5 minutes node 1 restarted on its old store, resynced from peers in
+2 s, then served work again. 35-minute run: 20 blocks, 0 rejected, identical tips, PPLNS 20/20 to
+the satoshi.
+Next: M4 (latency and uncles).
 
 ## Goal of phase 2
 Show, on regtest only, that three miners with **no pool operator** can mine into one sharechain,
@@ -59,6 +65,14 @@ testnet4, mainnet, any announcement.
 - Stratum difficulty is an integer with a floor of 1 (about 2^32 hashes), so a CPU miner finds a
   share about every 4 minutes at 2 threads. M4's latency and uncle tests want more shares: add a
   regtest-only fractional difficulty.
+- **M5 attack to test first: work on a dead template.** Share validation checks the payout,
+  the coinbase-to-header link and the share's PoW, but nothing ties the share's XBT header to
+  the real chain (prev block = a recent XBT block, bits = that height's network target). A miner
+  could earn shares on work that can never be a block (a withholding equivalent). A fix must stay
+  deterministic across nodes, so not "is it my node's tip right now". Options: a header-chain
+  commitment checked against Knots with a depth allowance, or v1-style penalties in fork choice.
+- Not yet tested: nodes with different mempools and policies (templates are local; only the
+  payout is shared). Add to M4/M5: one node with a stricter policy, its blocks still pay all.
 - The start-up "Method not found" is `getdifficulty`, which Knots-BLAKE2b doesn't have. Upstream
   calls it once, only to log the network difficulty. Harmless.
 
