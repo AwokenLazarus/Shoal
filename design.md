@@ -25,6 +25,13 @@ ASICs --SV1--> datum_gateway --DATUM (localhost)--> shoald <--p2p sharechain--> 
                     +--GBT/submitblock--> own Knots-BLAKE2b node <--RPC (tip, submit)--+
 ```
 
+> **Update after the fork spike (2026-11-08, `research/fork-spike.md`):** v1 drops the DATUM
+> front end. Each miner runs their own Knots node plus `shoald`. `shoald` takes templates from that
+> node by GBT and serves Sia-dialect Stratum V1 to the ASICs itself, as P2Poolv2 does on Bitcoin.
+> Template sovereignty is unchanged, there is one program fewer to install, and P2Poolv2's share
+> consensus (commitment last, midstate proof) stays intact. A DATUM front end remains a later option.
+> Where this document says "gateway", read "`shoald`'s stratum" for v1.
+
 ## 1. Why XBT is a better home for a sharechain than Bitcoin was
 
 1. **The ASIC never sees the coinbase.** A BLAKE2b miner is sent `coinb1 = 000000 ‖ h2 ‖ 00000000`
