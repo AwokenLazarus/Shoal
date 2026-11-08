@@ -25,7 +25,7 @@ Stress run first (share target stuck at its easiest, 1.3 s shares, same delay): 
 uncles (15.5%), 37 orphans (2.4%), tips identical, PPLNS 1,171/1,171 to the satoshi.
 Regtest-only fork changes for it: fractional stratum difficulty (1/1024 units), and the run sets
 the genesis (ASERT anchor) time and target (`SHOAL_REGTEST_GENESIS_TIME` / `_BITS`).
-Next: M5 (attacks), starting with the dead-template case below.
+Next: M5 (attacks). Dead-template gap shown (below); implementing upstream's #652 design for XBT.
 
 ## Goal of phase 2
 Show, on regtest only, that three miners with **no pool operator** can mine into one sharechain,
@@ -81,8 +81,12 @@ testnet4, mainnet, any announcement.
   (2026-11-08): `docs/architecture/mine-on-bitcoin-chain.md` (issue #652). A share is paid only
   if its XBT parent is on the paying share's XBT chain or one block off it; shares carry the XBT
   headers needed to check that; each node checks carried headers itself (links, PoW, exact
-  required bits). Plan: first a regtest test that shows the gap (a miner on a fabricated parent
-  is paid today), then implement #652 in the fork for XBT, which needs XBT's difficulty rule
+  required bits). **Gap shown 2026-11-08** (`ATTACK_NODE=3
+  ATTACK_BIN=<shoal-attack-dead-template build> e2e/m2-three-nodes.sh`, run
+  m2-20261108T202552Z, 20 min): node 3 built every job on a made-up XBT parent. None of its 344
+  block submissions reached the chain, yet the honest nodes accepted all its shares (0 invalid):
+  45 of the 130 main-chain shares were dead work, and real blocks paid them 18.5% of all coinbase
+  value, exactly as the current rules say. Next: implement #652 in the fork for XBT, which needs XBT's difficulty rule
   for the exact-bits check. Offer it upstream if they want it.
   XBT's rule (Knots-BLAKE2b `src/pow.cpp`, checked 2026-11-08 in ~/xbt-rnd/xbt-071/knots):
   Bitcoin's, i.e. retarget every 2,016 blocks clamped at 4x, testnet min-difficulty blocks,
