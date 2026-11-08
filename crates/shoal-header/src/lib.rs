@@ -211,6 +211,99 @@ impl Decodable for XbtHeader {
     }
 }
 
+impl Encodable for V2Fields {
+    /// The v2 fields alone (84 bytes), in header order. For embedding a header in another
+    /// structure field by field, as P2Poolv2's share header does.
+    fn consensus_encode<W: Write + ?Sized>(&self, w: &mut W) -> Result<usize, bitcoin::io::Error> {
+        let mut len = 0;
+        len += self.nonce2.consensus_encode(w)?;
+        len += self.nonce3.consensus_encode(w)?;
+        w.write_all(&self.extranonce)?;
+        len += 16;
+        len += self.time_offset.consensus_encode(w)?;
+        len += self.txcount.consensus_encode(w)?;
+        len += self.flags.consensus_encode(w)?;
+        len += self.xor_key_mask_clear_bits.consensus_encode(w)?;
+        w.write_all(&self.xor_key)?;
+        len += 16;
+        len += self.height.consensus_encode(w)?;
+        w.write_all(&self.mm_rhs)?;
+        len += 32;
+        Ok(len)
+    }
+}
+
+impl Decodable for V2Fields {
+    fn consensus_decode<R: Read + ?Sized>(r: &mut R) -> Result<Self, encode::Error> {
+        let nonce2 = u32::consensus_decode(r)?;
+        let nonce3 = u32::consensus_decode(r)?;
+        let mut extranonce = [0u8; 16];
+        r.read_exact(&mut extranonce)?;
+        let time_offset = u32::consensus_decode(r)?;
+        let txcount = u16::consensus_decode(r)?;
+        let flags = u8::consensus_decode(r)?;
+        let xor_key_mask_clear_bits = u8::consensus_decode(r)?;
+        let mut xor_key = [0u8; 16];
+        r.read_exact(&mut xor_key)?;
+        let height = i32::consensus_decode(r)?;
+        let mut mm_rhs = [0u8; 32];
+        r.read_exact(&mut mm_rhs)?;
+        Ok(V2Fields {
+            nonce2,
+            nonce3,
+            extranonce,
+            time_offset,
+            txcount,
+            flags,
+            xor_key_mask_clear_bits,
+            xor_key,
+            height,
+            mm_rhs,
+        })
+    }
+}
+
+/// An XBT block: a v2 header and its transactions. Transactions are Bitcoin's, unchanged.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct XbtBlock {
+    pub header: XbtHeader,
+    pub txdata: Vec<bitcoin::Transaction>,
+}
+
+impl XbtBlock {
+    pub fn block_hash(&self) -> BlockHash {
+        self.header.block_hash()
+    }
+
+    /// SHA-256d merkle root of the transactions (XBT keeps Bitcoin's txid tree).
+    pub fn compute_merkle_root(&self) -> Option<TxMerkleNode> {
+        let hashes = self.txdata.iter().map(|tx| tx.compute_txid().to_raw_hash());
+        bitcoin::merkle_tree::calculate_root(hashes).map(TxMerkleNode::from_raw_hash)
+    }
+
+    /// True if the header's merkle root commits to `txdata`.
+    pub fn check_merkle_root(&self) -> bool {
+        self.compute_merkle_root() == Some(self.header.merkle_root)
+    }
+}
+
+impl Encodable for XbtBlock {
+    fn consensus_encode<W: Write + ?Sized>(&self, w: &mut W) -> Result<usize, bitcoin::io::Error> {
+        let mut len = self.header.consensus_encode(w)?;
+        len += self.txdata.consensus_encode(w)?;
+        Ok(len)
+    }
+}
+
+impl Decodable for XbtBlock {
+    fn consensus_decode<R: Read + ?Sized>(r: &mut R) -> Result<Self, encode::Error> {
+        Ok(XbtBlock {
+            header: XbtHeader::consensus_decode(r)?,
+            txdata: Vec::<bitcoin::Transaction>::consensus_decode(r)?,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -334,5 +427,42 @@ mod tests {
     fn version_excludes_the_v2_flag() {
         let (h, _) = header(0);
         assert_eq!(h.version.to_consensus() as u32 & V2_FLAG, 0);
+    }
+    #[test]
+    fn v2_fields_encode_as_the_header_tail() {
+        for i in 0..VECTORS.len() {
+            let (h, raw) = header(i);
+            assert_eq!(serialize(&h.v2), raw[80..].to_vec());
+            assert_eq!(deserialize::<V2Fields>(&raw[80..]).unwrap(), h.v2);
+        }
+    }
+
+    #[test]
+    fn block_round_trips_and_checks_its_merkle_root() {
+        use bitcoin::{
+            absolute::LockTime, transaction, Amount, ScriptBuf, Transaction, TxIn, TxOut,
+        };
+        let coinbase = Transaction {
+            version: transaction::Version::TWO,
+            lock_time: LockTime::ZERO,
+            input: vec![TxIn::default()],
+            output: vec![TxOut {
+                value: Amount::from_sat(312_500_000),
+                script_pubkey: ScriptBuf::new(),
+            }],
+        };
+        let (mut h, _) = header(0);
+        h.merkle_root = TxMerkleNode::from_raw_hash(coinbase.compute_txid().to_raw_hash());
+        let block = XbtBlock {
+            header: h,
+            txdata: vec![coinbase],
+        };
+        assert!(block.check_merkle_root());
+        let bytes = serialize(&block);
+        assert_eq!(&bytes[..XBT_HEADER_SIZE], &h.to_bytes()[..]);
+        assert_eq!(deserialize::<XbtBlock>(&bytes).unwrap(), block);
+        let mut bad = block.clone();
+        bad.header.merkle_root = TxMerkleNode::all_zeros();
+        assert!(!bad.check_merkle_root());
     }
 }
