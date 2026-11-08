@@ -1,7 +1,11 @@
 # Shoal — phase 2 plan (regtest prototype)
 
-Started 2026-11-08. M0 done (GO, research/fork-spike.md). Fork: github.com/AwokenLazarus/p2poolv2,
-branch `shoal/xbt-header`. Next: M1.
+Started 2026-11-08. **M0 done** (GO, research/fork-spike.md). **M1 done** (2026-11-08): one CPU
+miner speaking XBT's ASIC dialect mines through Shoal on regtest; every block is accepted by Knots
+and its coinbase pays the sharechain's PPLNS split to the satoshi (independent checker
+`e2e/verify_pplns.py`; runs of 6 and 5 blocks, all OK). The fork's whole workspace test suite passes
+on XBT (1,588 tests). Fork: github.com/AwokenLazarus/p2poolv2, branch `shoal/xbt-header`.
+Next: M2 (three nodes).
 
 ## Goal of phase 2
 Show, on regtest only, that three miners with **no pool operator** can mine into one sharechain,
@@ -41,6 +45,14 @@ see research/fork-spike.md).
 ## Not in phase 2
 Mini chain (config only), output elision, LZT1 in shares, NTA compatibility, Lightning,
 testnet4, mainnet, any announcement.
+
+## Carried into M2
+- `verify_pplns.py` must mirror P2Poolv2's `COINBASE_MATURITY` (6,048 shares): past that length the
+  most recent shares are left out of the window.
+- Stratum difficulty is an integer with a floor of 1 (about 2^32 hashes), so a CPU miner finds a
+  share about every 90 s. Enough for M2's agreement checks; M4's latency tests want more shares,
+  so consider a regtest-only fractional difficulty there.
+- One RPC call at node start gets "Method not found" from Knots; harmless so far, identify it.
 
 ## Risks to watch
 - Real BLAKE2b ASIC firmware vs our Stratum: regtest only has CPU miners; test against one real
