@@ -22,4 +22,5 @@ A shoal is a school of fish that moves together with no leader.
 - XBT miners connect through DATUM gateways, including FlyTheElephant's datum_gateway.
 
 ## Licence
-MIT (to be confirmed before code lands).
+Dual-licensed under either of [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option.
+Contributions are accepted under the same terms.
