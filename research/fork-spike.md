@@ -53,3 +53,33 @@ gateways.
 2. Introduce `XbtHeader` behind the existing API; rerun. Count every test that had to change.
 3. Go / no-go: if the header swap stays outside consensus serialization other than the header
    bytes themselves, fork. Otherwise our own sharechain on `lazarus-protocol`.
+
+# Fork spike, part 2: results on xbt-lab (2026-11-08)
+
+Lab: xbt-lab (8 vCPU, capped), Rust 1.99.0 (P2Poolv2's pinned toolchain), P2Poolv2 tag v0.16.3
+(`a6f39146`). Command: `cargo test -p p2poolv2_lib --no-fail-fast`.
+
+| Run | Passed | Failed |
+|---|---:|---:|
+| Stock v0.16.3 (baseline) | 1,315 | 0 |
+| With `shoal-header::XbtHeader` / `XbtBlock` in place of rust-bitcoin's `Header` / `Block` | 1,271 | 44 |
+
+**The change:** `shoal-header` (this repo; 13 tests, clippy and fmt clean) plus a patch to
+P2Poolv2 of 12 files and about 40 changed lines. It touches only imports, header struct literals
+(which gain a `v2` field), the share header's encoder/decoder (which now carries the 84 v2 bytes),
+and `submit_block`, made generic over the block type. No consensus rule was rewritten. The local
+branch is `shoal/xbt-header`, not on GitHub.
+
+**All 44 failures are test data, not logic:**
+
+| Count | Cause | Fix (M1) |
+|---:|---|---|
+| 19 | JSON fixtures saved with the 80-byte header (no `v2`), mined with SHA-256d nonces | Regenerate fixtures on XBT regtest |
+| 19 | Sharechain genesis anchored to a Bitcoin block (`*.dat`); `XbtHeader` correctly refuses its v1 header | XBT genesis: a regtest block after the BLAKE2b fork height, later testnet4 |
+| 6 | Stratum tests replaying real SHA-256 ASIC submissions, now (correctly) below difficulty | Replace with Sia-dialect BLAKE2b submissions from our CPU miner, then from a real ASIC |
+
+No share-validation, PPLNS, uncle, ASERT or p2p test failed for any other reason.
+
+**Verdict: GO.** P2Poolv2 takes the XBT header as a small, rebasable patch series. That meets
+"fork, don't vendor". Next: the GitHub fork (needs the owner's yes), then M1 (v2 fields from the
+real Stratum job, XBT genesis, regenerated fixtures, Sia-dialect Stratum).

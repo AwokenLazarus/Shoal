@@ -1,6 +1,6 @@
 # Shoal — phase 2 plan (regtest prototype)
 
-Started 2026-11-08. M0 part 1 (reading) done; part 2 waits for the lab VM.
+Started 2026-11-08. M0 done (GO, research/fork-spike.md). Next: fork, then M1.
 
 ## Goal of phase 2
 Show, on regtest only, that three miners with **no pool operator** can mine into one sharechain,

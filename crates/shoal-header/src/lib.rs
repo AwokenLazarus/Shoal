@@ -188,6 +188,36 @@ impl XbtHeader {
         }
     }
 
+    /// Increment `nonce` until the PoW meets `target`, for tests and simulations on regtest
+    /// targets. Returns false if `max_tries` nonces all miss.
+    pub fn grind(&mut self, target: Target, max_tries: u32) -> bool {
+        for _ in 0..max_tries {
+            if self.meets(target) {
+                return true;
+            }
+            self.nonce = self.nonce.wrapping_add(1);
+        }
+        self.meets(target)
+    }
+
+    /// A v2 header that meets regtest's maximum target (`0x207fffff`), with every other field
+    /// zero. The XBT stand-in for rust-bitcoin's `genesis_block(Regtest).header` in tests:
+    /// Bitcoin's regtest genesis is an 80-byte v1 header, which XBT code must refuse.
+    pub fn regtest_test_header() -> Self {
+        let bits = CompactTarget::from_consensus(0x207f_ffff);
+        let mut header = XbtHeader {
+            version: Version::from_consensus(0x2000_0000),
+            prev_blockhash: BlockHash::all_zeros(),
+            merkle_root: TxMerkleNode::all_zeros(),
+            time: 1_700_000_000,
+            bits,
+            nonce: 0,
+            v2: V2Fields::default(),
+        };
+        assert!(header.grind(Target::from_compact(bits), 1 << 16));
+        header
+    }
+
     /// True if the PoW meets `target`, whatever `bits` says. Used for share targets, which are
     /// easier than the block target in `bits`.
     pub fn meets(&self, target: Target) -> bool {
@@ -428,6 +458,13 @@ mod tests {
         let (h, _) = header(0);
         assert_eq!(h.version.to_consensus() as u32 & V2_FLAG, 0);
     }
+    #[test]
+    fn regtest_test_header_meets_regtest_target() {
+        let h = XbtHeader::regtest_test_header();
+        assert!(h.validate_pow(h.target()).is_ok());
+        assert_eq!(deserialize::<XbtHeader>(&serialize(&h)).unwrap(), h);
+    }
+
     #[test]
     fn v2_fields_encode_as_the_header_tail() {
         for i in 0..VECTORS.len() {
