@@ -1,0 +1,14 @@
+[package]
+name = "shoal-grind"
+description = "Test CPU miner for XBT's Sia-dialect Stratum V1 (regtest / end-to-end tests only)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+hex = { workspace = true }
+lazarus-protocol = { workspace = true }
+serde_json = { workspace = true }

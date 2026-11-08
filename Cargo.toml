@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/shoal-header", "crates/shoal-stratum"]
+members = ["crates/shoal-header", "crates/shoal-stratum", "crates/shoal-grind"]
 resolver = "2"
 
 [workspace.package]
