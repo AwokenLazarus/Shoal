@@ -1,0 +1,18 @@
+[workspace]
+members = ["crates/shoal-header"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/AwokenLazarus/Shoal"
+rust-version = "1.88"
+
+[workspace.dependencies]
+# Same major/minor as P2Poolv2 v0.16.3, so XbtHeader drops into its types.
+bitcoin = { version = "0.32.5", features = ["serde"] }
+# XBT header v2 and BLAKE2b PoW: Lazarus Pool's tested implementation (MIT), pinned.
+lazarus-protocol = { git = "https://github.com/AwokenLazarus/Lazarus-Pool.git", rev = "94b2f2cbacc6b59dd8a479e6732800fec7f72dca" }
+serde = { version = "1", features = ["derive"] }
+hex = "0.4"

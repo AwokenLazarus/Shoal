@@ -1,0 +1,16 @@
+[package]
+name = "shoal-header"
+description = "XBT (Bitcoin BLAKE2b) 164-byte header v2 with a rust-bitcoin-shaped API, for Shoal's sharechain"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+bitcoin = { workspace = true }
+lazarus-protocol = { workspace = true }
+serde = { workspace = true }
+
+[dev-dependencies]
+hex = { workspace = true }
