@@ -65,7 +65,7 @@ Lab: xbt-lab (8 vCPU, capped), Rust 1.99.0 (P2Poolv2's pinned toolchain), P2Pool
 | With `shoal-header::XbtHeader` / `XbtBlock` in place of rust-bitcoin's `Header` / `Block` | 1,271 | 44 |
 
 **The change:** `shoal-header` (this repo; 13 tests, clippy and fmt clean) plus a patch to
-P2Poolv2 of 12 files and about 40 changed lines. It touches only imports, header struct literals
+P2Poolv2 of 14 files (12 source files plus Cargo.toml and Cargo.lock), 34 lines added and 18 removed. It touches only imports, header struct literals
 (which gain a `v2` field), the share header's encoder/decoder (which now carries the 84 v2 bytes),
 and `submit_block`, made generic over the block type. No consensus rule was rewritten. The local
 branch is `shoal/xbt-header`, not on GitHub.
