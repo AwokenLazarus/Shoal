@@ -21,7 +21,7 @@ mainnet, and the node refuses testnet4 and mainnet until XBT anchors are chosen.
 | M2 three nodes | Done: three nodes, 31 minutes, 19 blocks from three miners, identical sharechain tips, every payout exact |
 | M3 kill a node | Done: the founding node hard-killed mid-run; the other two kept mining and paying it, and it resynced in 2 s on restart |
 | M4 latency and uncles | Done: ~200 ms round trips between nodes, 10 s shares: 3.2% uncles, no orphans, no work lost, every payout exact including uncles |
-| M5 attacks | Next |
+| M5 attacks | In progress: a node mining on a dead XBT parent was still paid 18.5% of real coinbases; the fix (only pay shares built on the real XBT chain) is being built |
 | M6 | Report ([plan.md](plan.md)) |
 
 The fork's full test suite passes on XBT (1,589 tests).
