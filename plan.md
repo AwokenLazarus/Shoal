@@ -17,7 +17,15 @@ miner. The other two kept mining; a block found while it was down paid the windo
 earlier shares included. After 5 minutes node 1 restarted on its old store, resynced from peers in
 2 s, then served work again. 35-minute run: 20 blocks, 0 rejected, identical tips, PPLNS 20/20 to
 the satoshi.
-Next: M4 (latency and uncles).
+**M4 done** (2026-11-08, `NETEM_MS=100 NETEM_JITTER_MS=50 STRATUM_DIFF=32 STRATUM_MAX_DIFF=32
+e2e/m2-three-nodes.sh`): 100 ± 50 ms one-way delay on the share p2p ports (about 200 ms RTT).
+30 minutes, 186 shares (9.7 s average): 6 uncles (3.2%), 0 orphans, 0 invalid, so no work was
+lost (target < 1%). Identical tips; PPLNS 168/168 to the satoshi, 61 of those blocks paying uncles.
+Stress run first (share target stuck at its easiest, 1.3 s shares, same delay): 1,540 shares, 238
+uncles (15.5%), 37 orphans (2.4%), tips identical, PPLNS 1,171/1,171 to the satoshi.
+Regtest-only fork changes for it: fractional stratum difficulty (1/1024 units), and the run sets
+the genesis (ASERT anchor) time and target (`SHOAL_REGTEST_GENESIS_TIME` / `_BITS`).
+Next: M5 (attacks), starting with the dead-template case below.
 
 ## Goal of phase 2
 Show, on regtest only, that three miners with **no pool operator** can mine into one sharechain,
@@ -62,9 +70,10 @@ testnet4, mainnet, any announcement.
 - Regtest sharechain parameters (fork `xbt_params.rs`): PPLNS window 12 shares, maturity 4,
   and a 64-entry cache buffer. `verify_pplns.py` mirrors the window, the maturity skip and
   uncle weighting (9/10 to the uncle's miner, 1/10 to the including share's miner).
-- Stratum difficulty is an integer with a floor of 1 (about 2^32 hashes), so a CPU miner finds a
-  share about every 4 minutes at 2 threads. M4's latency and uncle tests want more shares: add a
-  regtest-only fractional difficulty.
+- On regtest every miner submission also meets the XBT block target and is submitted as a block,
+  so Knots block counts measure submissions, not shares. Count shares from the sharechain.
+- Phase 3: real networks need their genesis time and target chosen at launch (as upstream does
+  for its testnet4 relaunches); a months-old genesis pins ASERT at the easiest target.
 - **M5 attack to test first: work on a dead template.** Share validation checks the payout,
   the coinbase-to-header link and the share's PoW, but nothing ties the share's XBT header to
   the real chain (prev block = a recent XBT block, bits = that height's network target). A miner

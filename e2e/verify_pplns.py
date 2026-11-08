@@ -36,6 +36,11 @@ def target(bits: int) -> int:
     return mant * (256 ** (exp - 3)) if exp >= 3 else mant >> (8 * (3 - exp))
 
 
+def uncle_hash(u):
+    """An uncle as `shares` lists it: an object with its blockhash (or a bare hash)."""
+    return u["blockhash"] if isinstance(u, dict) else u
+
+
 def run_json(cmd):
     return json.loads(subprocess.run(cmd, check=True, capture_output=True, text=True).stdout)
 
@@ -118,7 +123,7 @@ def main() -> int:
         for w in chain[skip:]:
             bonus = 0
             for u in w["uncles"]:
-                u_addr, u_diff = uncle_info(u)
+                u_addr, u_diff = uncle_info(uncle_hash(u))
                 weights[u_addr] = weights.get(u_addr, 0) + 9 * u_diff
                 bonus += u_diff
                 n_uncles += 1
@@ -155,6 +160,39 @@ def main() -> int:
         if not ok:
             print(f"  expected {expected}\n  paid     {paid}")
     print(f"payees seen across blocks: {len(all_payees)}")
+
+    # Share DAG across all stores: main chain, uncles (referenced by a main-chain share) and
+    # orphans (neither). Work = integer difficulty from each share's bits.
+    entries = {}
+    for d in a.db:
+        for e in cli(d, "dag", "--to", str(tip + 50), "--num", str(tip + 100))["entries"]:
+            entries.setdefault(e["blockhash"], e)
+    main = {h for h in by_hash}
+    uncles = {uncle_hash(u) for h in main for u in by_hash[h]["uncles"]}
+    orphans = [h for h in entries if h not in main and h not in uncles]
+    invalid = [h for h, e in entries.items() if e.get("validation_status") == "Invalid"]
+
+    def work(h):
+        f = full(h)
+        return difficulty(int(f["bits"], 16)) if f else 0
+
+    w_main = sum(work(h) for h in main if by_hash[h]["height"] > 0)
+    w_uncle = sum(work(h) for h in uncles)
+    w_orphan = sum(work(h) for h in orphans)
+    no_data = [h for h in orphans if full(h) is None]
+    if no_data:
+        print(f"orphans without a stored header (work unknown, counted as 0): {len(no_data)}")
+    for h in orphans[:5]:
+        e = entries[h]
+        print(f"  orphan h={e['height']} {h[:16]} status={e.get('validation_status')} "
+              f"chain={e.get('chain')} data={e.get('has_block_data')} work={work(h)}")
+    w_all = w_main + w_uncle + w_orphan
+    lost = 100.0 * w_orphan / w_all if w_all else 0.0
+    print(
+        f"DAG shares={len(entries)} main={len(main) - 1} uncles={len(uncles)} orphans={len(orphans)} "
+        f"invalid={len(invalid)} uncle_rate={100.0 * len(uncles) / max(len(entries) - 1, 1):.1f}% "
+        f"work_lost={lost:.2f}% orphan_rate={100.0 * len(orphans) / max(len(entries) - 1, 1):.1f}%"
+    )
     print(f"PPLNS checked={checked} failed={failed} tips={'same' if tips_ok else 'differ'}")
     return 1 if failed or checked == 0 or not tips_ok else 0
 

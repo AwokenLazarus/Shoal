@@ -13,8 +13,16 @@
 # same store; it must resync from its peers before serving work again. The other two keep mining.
 # Every node dials every other, so any node can die, including node 1, which started the chain.
 #
+# M4 (latency): NETEM_MS=<ms> delays the share p2p traffic between the nodes (ports 6901-6903
+# only, both directions, so RTT is about twice that) with NETEM_JITTER_MS jitter, using tc netem
+# on lo through sudo. Other traffic on the host is untouched; the qdisc is removed on exit, and
+# the run refuses to start if lo already has a root qdisc of its own.
+# STRATUM_DIFF / STRATUM_MAX_DIFF set the session difficulty in pool units (regtest: 1/1024 of
+# difficulty 1 each, see the fork's xbt_params.rs).
+#
 # Env: KNOTS_BIN, SHOAL_NODE, SHOAL_CLI, GRIND (as m1), SECS (mining time, default 1800),
-#      THREADS (per miner, default 2), LOG_LEVEL, KILL_NODE, KILL_AT, DOWN_SECS
+#      THREADS (per miner, default 2), LOG_LEVEL, KILL_NODE, KILL_AT, DOWN_SECS,
+#      NETEM_MS, NETEM_JITTER_MS, STRATUM_DIFF (default 1024), STRATUM_MAX_DIFF
 set -euo pipefail
 KNOTS_BIN=${KNOTS_BIN:-$HOME/xbt-lab/prefix/bin}
 SHOAL_NODE=${SHOAL_NODE:-$HOME/shoal/p2poolv2/target/debug/p2poolv2}
@@ -25,6 +33,10 @@ THREADS=${THREADS:-2}
 KILL_NODE=${KILL_NODE:-}
 KILL_AT=${KILL_AT:-600}
 DOWN_SECS=${DOWN_SECS:-300}
+NETEM_MS=${NETEM_MS:-}
+NETEM_JITTER_MS=${NETEM_JITTER_MS:-0}
+STRATUM_DIFF=${STRATUM_DIFF:-1024}
+STRATUM_MAX_DIFF=${STRATUM_MAX_DIFF:-}
 RUN=${RUN:-$HOME/shoal/e2e/m2-$(date -u +%Y%m%dT%H%M%SZ)}
 N=3
 rpc_port() { echo $((38510 + $1)); }
@@ -35,8 +47,10 @@ share_port() { echo $((6900 + $1)); }
 api_port() { echo $((46900 + $1)); }
 
 PIDS=()
+NETEM_ON=0
 cleanup() {
   set +e
+  if [ "$NETEM_ON" = 1 ]; then sudo -n tc qdisc del dev lo root 2>/dev/null && echo "netem removed"; fi
   for p in "${PIDS[@]}"; do kill -TERM -- "-$p" 2>/dev/null || kill "$p" 2>/dev/null; done
   sleep 3
   for p in "${PIDS[@]}"; do kill -KILL -- "-$p" 2>/dev/null; done
@@ -46,6 +60,24 @@ cleanup() {
 }
 trap cleanup EXIT
 trap 'exit 130' INT; trap 'exit 143' TERM; trap 'exit 129' HUP
+
+if [ -n "$NETEM_MS" ]; then
+  if tc qdisc show dev lo | grep -q "qdisc prio 1:\|qdisc netem"; then
+    echo "FAIL: lo already has a prio/netem root qdisc; not touching it"; exit 1
+  fi
+  if tc qdisc show dev lo | grep -v "noqueue" | grep -q "root"; then
+    echo "FAIL: lo has a non-default root qdisc; not touching it"; exit 1
+  fi
+  # Bands 1-3 carry everything as before; band 4 (netem) only the share p2p ports.
+  sudo -n tc qdisc add dev lo root handle 1: prio bands 4 priomap 1 2 2 2 1 2 0 0 1 1 1 1 1 1 1 1
+  NETEM_ON=1
+  sudo -n tc qdisc add dev lo parent 1:4 handle 40: netem delay "${NETEM_MS}ms" "${NETEM_JITTER_MS}ms"
+  for port in 6901 6902 6903; do
+    sudo -n tc filter add dev lo protocol ip parent 1:0 prio 1 u32 match ip dport "$port" 0xffff flowid 1:4
+    sudo -n tc filter add dev lo protocol ip parent 1:0 prio 1 u32 match ip sport "$port" 0xffff flowid 1:4
+  done
+  echo "netem: ${NETEM_MS}ms ± ${NETEM_JITTER_MS}ms one way on share p2p ports 6901-6903"
+fi
 
 cli() { local i=$1; shift; "$KNOTS_BIN/bitcoin-cli" -datadir="$RUN/node$i" "$@"; }
 accepted() { local n; n=$(grep -c '^accepted' "$RUN/logs$1/grind.log" 2>/dev/null) || true; echo "${n:-0}"; }
@@ -127,8 +159,9 @@ pplns_ttl_days = 7
 [stratum]
 hostname = "127.0.0.1"
 port = $(stratum_port "$i")
-start_difficulty = 1
+start_difficulty = $STRATUM_DIFF
 minimum_difficulty = 1
+${STRATUM_MAX_DIFF:+maximum_difficulty = $STRATUM_MAX_DIFF}
 solo_address = "${PAYOUT[$i]}"
 bootstrap_address = "${PAYOUT[1]}"
 zmqpubhashblock = "tcp://127.0.0.1:$(zmq_port "$i")"
@@ -188,6 +221,13 @@ dial_others() {  # TOML list of every other node's share p2p address
 
 START_HEIGHT=$(cli 1 getblockcount)
 T0=$(date +%s)
+# A fresh ASERT anchor: the sharechain's genesis time is the run's start (same for every node
+# and every restart; see the fork's xbt_params::REGTEST_GENESIS_TIME_ENV).
+export SHOAL_REGTEST_GENESIS_TIME=${SHOAL_REGTEST_GENESIS_TIME:-$T0}
+# Start ASERT near a 10 s share: difficulty 1/8 (about 2^29 hashes) suits three 2-thread CPU
+# miners (~50 MH/s together). Unset (empty) keeps the fork's single-miner default.
+export SHOAL_REGTEST_GENESIS_BITS=${SHOAL_REGTEST_GENESIS_BITS-1d07ffff}
+[ -z "$SHOAL_REGTEST_GENESIS_BITS" ] && unset SHOAL_REGTEST_GENESIS_BITS
 END_AT=$((T0 + SECS))
 # Node 1 starts the sharechain: nobody to sync from.
 write_config 1 false "$(dial_others 1)"
