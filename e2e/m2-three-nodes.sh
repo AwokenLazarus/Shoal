@@ -22,7 +22,16 @@
 #
 # M5 (attacks): ATTACK_NODE=<1..3> runs that node from ATTACK_BIN, e.g. a fork build with
 # `--features shoal-attack-dead-template` (every job on a fabricated XBT parent). The checker
-# reports what honest blocks paid for such shares.
+# reports what honest blocks paid for such shares. With a `--features shoal-attack` build,
+# ATTACK_MODE (withhold, wrong-split, copy, private-fork) sets the node's SHOAL_ATTACK mode; it
+# gets its own SHOAL_ATTACK_ADDRESS, and ATTACK_THREADS miner threads (default THREADS).
+# private-fork reads SHOAL_ATTACK_PRIVATE_FROM / _UNTIL (seconds after the node starts).
+#
+# MIXED_POLICY=1: node 3's Knots builds templates with -blockmintxfee=0.0005 (50 sat/vB) while
+# nodes 1 and 2 keep the default, and node 1's wallet sends a transaction every 5 s,
+# alternating 1 and 100 sat/vB. Templates differ; every block must still pay the window. The
+# long coinbase maturity starts at height 5,000 in this mode, so the feed's coins (heights
+# 121-140) mature after 101 blocks; the run tests template policy, not maturity.
 #
 # Env: KNOTS_BIN, SHOAL_NODE, SHOAL_CLI, GRIND (as m1), SECS (mining time, default 1800),
 #      THREADS (per miner, default 2), LOG_LEVEL, KILL_NODE, KILL_AT, DOWN_SECS,
@@ -43,6 +52,10 @@ STRATUM_DIFF=${STRATUM_DIFF:-1024}
 STRATUM_MAX_DIFF=${STRATUM_MAX_DIFF:-}
 ATTACK_NODE=${ATTACK_NODE:-}
 ATTACK_BIN=${ATTACK_BIN:-}
+ATTACK_MODE=${ATTACK_MODE:-}
+ATTACK_THREADS=${ATTACK_THREADS:-}
+ATTACK_ADDR=""
+MIXED_POLICY=${MIXED_POLICY:-}
 if [ -n "$ATTACK_NODE" ] && [ ! -x "$ATTACK_BIN" ]; then echo "FAIL: ATTACK_BIN not executable"; exit 1; fi
 RUN=${RUN:-$HOME/shoal/e2e/m2-$(date -u +%Y%m%dT%H%M%SZ)}
 N=3
@@ -110,8 +123,9 @@ dnsseed=0
 zmqpubhashblock=tcp://127.0.0.1:$(zmq_port "$i")
 testactivationheight=blake2b@101
 rdtsexpiry=4102444800
-testcoinbasematuritylong=200:200:6680
+$(if [ -n "$MIXED_POLICY" ]; then echo "testcoinbasematuritylong=5000:5000:5101"; else echo "testcoinbasematuritylong=200:200:6680"; fi)
 fallbackfee=0.0001
+$([ -n "$MIXED_POLICY" ] && [ "$i" = 3 ] && echo "blockmintxfee=0.0005")
 CONF
   "$KNOTS_BIN/bitcoind" -datadir="$RUN/node$i" -daemon >/dev/null
 done
@@ -131,12 +145,21 @@ for i in $(seq $N); do
   SHARE_ADDR[$i]=$("$SHOAL_CLI" address "$WP" --network regtest | tail -1)
   echo "miner $i payout ${PAYOUT[$i]}"
 done
+PREMINE=120
 cli 1 generatetodescriptor 120 'raw(51)' >/dev/null
+if [ -n "$MIXED_POLICY" ]; then
+  # Coins for the transaction feed: 20 blocks to node 1's wallet, matured by 200 more.
+  FEED_ADDR=$(cli 1 -rpcwallet=shoal1 getnewaddress "" bech32)
+  cli 1 generatetoaddress 20 "$FEED_ADDR" >/dev/null
+  cli 1 generatetodescriptor 111 'raw(51)' >/dev/null
+  PREMINE=251
+fi
 for i in $(seq 2 $N); do
-  for _ in $(seq 60); do [ "$(cli "$i" getblockcount)" = 120 ] && break; sleep 0.5; done
-  [ "$(cli "$i" getblockcount)" = 120 ] || { echo "FAIL: knots node $i did not sync"; exit 1; }
+  for _ in $(seq 120); do [ "$(cli "$i" getblockcount)" = $PREMINE ] && break; sleep 0.5; done
+  [ "$(cli "$i" getblockcount)" = $PREMINE ] || { echo "FAIL: knots node $i did not sync"; exit 1; }
 done
-echo "knots: $N nodes at height 120"
+echo "knots: $N nodes at height $PREMINE"
+[ -n "$MIXED_POLICY" ] && echo "mixed policy: node 3 blockmintxfee=0.0005; feed balance $(cli 1 -rpcwallet=shoal1 getbalance)"
 
 # --- Shoal nodes -----------------------------------------------------------------------------
 write_config() {
@@ -197,8 +220,16 @@ CONF
 declare -A NODE_PID MINER_PID KILL_ACC
 start_node() {
   local i=$1 bin=$SHOAL_NODE
-  if [ "$i" = "$ATTACK_NODE" ]; then bin=$ATTACK_BIN; echo "node $i runs the attack build $ATTACK_BIN"; fi
-  setsid timeout -k 10 $((SECS + 900)) "$bin" --config "$RUN/shoal$i/config.toml" \
+  local attack_env=()
+  if [ "$i" = "$ATTACK_NODE" ]; then
+    bin=$ATTACK_BIN; echo "node $i runs the attack build $ATTACK_BIN${ATTACK_MODE:+ mode $ATTACK_MODE}"
+    if [ -n "$ATTACK_MODE" ]; then
+      [ -n "$ATTACK_ADDR" ] || ATTACK_ADDR=$(cli "$i" -rpcwallet="shoal$i" getnewaddress "" bech32)
+      echo "attacker address $ATTACK_ADDR"
+      attack_env=(SHOAL_ATTACK="$ATTACK_MODE" SHOAL_ATTACK_ADDRESS="$ATTACK_ADDR")
+    fi
+  fi
+  setsid env "${attack_env[@]}" timeout -k 10 $((SECS + 900)) "$bin" --config "$RUN/shoal$i/config.toml" \
     >"$RUN/logs$i/shoal.out" 2>&1 &
   NODE_PID[$i]=$!; PIDS+=($!)
 }
@@ -213,9 +244,10 @@ wait_stratum() {
   return 1
 }
 start_miner() {
-  local i=$1 secs=$2
+  local i=$1 secs=$2 threads=$THREADS
+  if [ "$i" = "$ATTACK_NODE" ] && [ -n "$ATTACK_THREADS" ]; then threads=$ATTACK_THREADS; fi
   setsid timeout -k 5 "$secs" "$GRIND" --port "$(stratum_port "$i")" --user "${PAYOUT[$i]}.cpu$i" \
-    --pass "p2p=${SHARE_ADDR[$i]}" --threads "$THREADS" --secs "$secs" >>"$RUN/logs$i/grind.log" 2>&1 &
+    --pass "p2p=${SHARE_ADDR[$i]}" --threads "$threads" --secs "$secs" >>"$RUN/logs$i/grind.log" 2>&1 &
   MINER_PID[$i]=$!; PIDS+=($!)
 }
 dial_others() {  # TOML list of every other node's share p2p address
@@ -265,10 +297,15 @@ progress() {
   for i in $(seq $N); do line="$line m$i=$(accepted "$i")"; done
   echo "$line${1:+ $1}"
 }
-KILLED=0 RESTARTED=0 NEXT_PROGRESS=$((T0 + 300))
+KILLED=0 RESTARTED=0 NEXT_PROGRESS=$((T0 + 300)) FEED_N=0
 while [ "$(date +%s)" -lt "$END_AT" ]; do
   sleep 5
   now=$(date +%s)
+  if [ -n "$MIXED_POLICY" ]; then
+    FEED_N=$((FEED_N + 1)); rate=$([ $((FEED_N % 2)) = 0 ] && echo 100 || echo 1)
+    cli 1 -rpcwallet=shoal1 -named sendtoaddress address="$FEED_ADDR" amount=0.01 fee_rate=$rate >/dev/null 2>&1 \
+      || echo "feed tx $FEED_N failed"
+  fi
   if [ -n "$KILL_NODE" ] && [ "$KILLED" = 0 ] && [ "$now" -ge $((T0 + KILL_AT)) ]; then
     kill -KILL -- "-${MINER_PID[$KILL_NODE]}" 2>/dev/null || true
     kill -KILL -- "-${NODE_PID[$KILL_NODE]}" 2>/dev/null || true
@@ -312,8 +349,19 @@ for i in $(seq $N); do
   for _ in $(seq 30); do kill -0 "${NODE_PID[$i]}" 2>/dev/null || break; sleep 1; done
 done
 DBS=()
-for i in $(seq $N); do DBS+=(--db "$RUN/shoal$i/store.db"); done
+for i in $(seq $N); do
+  if [ "$i" = "$ATTACK_NODE" ]; then DBS+=(--attacker-db "$RUN/shoal$i/store.db")
+  else DBS+=(--db "$RUN/shoal$i/store.db"); fi
+done
 set +e
+[ -n "$ATTACK_ADDR" ] && DBS+=(--attack-address "$ATTACK_ADDR")
+ALARMS=""
+for i in $(seq $N); do
+  [ "$i" = "$ATTACK_NODE" ] && continue
+  n=$(cat "$RUN/logs$i"/shoal.log* 2>/dev/null | grep -c "SHARECHAIN REORG ALARM" || true)
+  echo "node $i reorg alarms: $n"
+  ALARMS="$ALARMS node$i=$n"
+done
 python3 "$(dirname "$0")/verify_pplns.py" --cli "$SHOAL_CLI" "${DBS[@]}" \
   --bitcoin-cli "$KNOTS_BIN/bitcoin-cli" --datadir "$RUN/node1" --network regtest | tee "$RUN/pplns.txt"
 set -e
@@ -321,4 +369,4 @@ M3=""
 if [ -n "$KILL_NODE" ]; then
   M3=" killed=node$KILL_NODE down_blocks=${DOWN_BLOCKS:-?} restarted=$([ "$RESTARTED" -gt 0 ] && echo yes || echo NO)"
 fi
-echo "RESULT blocks=$((END_HEIGHT - START_HEIGHT)) $(tail -1 "$RUN/pplns.txt")$M3"
+echo "RESULT blocks=$((END_HEIGHT - START_HEIGHT)) $(tail -1 "$RUN/pplns.txt")$M3${ATTACK_MODE:+ attack=$ATTACK_MODE} reorg_alarms:$ALARMS"

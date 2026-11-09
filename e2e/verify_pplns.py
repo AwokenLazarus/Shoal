@@ -13,6 +13,16 @@ must pay from the sharechain alone, and compare with the coinbase Knots accepted
              uncle's miner and 1 x to the including share's miner
   split    = coinbase value * weight // total, addresses in string order, the last address
              takes the rounding remainder (P2Poolv2's `append_proportional_distribution`)
+  rule     = Shoal's payout rule (upstream's #652 design): a window share, or uncle, is paid
+             only if its XBT parent is on the paying share's XBT chain (an ancestor of, or
+             equal to, the paying share's XBT parent) or a child of a block on it. Ineligible
+             shares keep their slot and weigh 0; a nephew gets no bonus for an ineligible uncle.
+             The genesis share is always paid. XBT ancestry is read from Knots.
+             `--no-payout-rule` checks upstream's rule instead.
+
+With `--attacker-db`, that store is the attacking node's: it is left out of the tip check and
+the main chain, and the payout to the addresses of shares on fabricated XBT parents (in any
+store) is reported.
 
 Reads the sharechain with `p2poolv2_cli --db-path` (the node must be stopped) and the blocks
 with `bitcoin-cli`. Several stores (one per node) can be given: their tips must match, and
@@ -52,6 +62,9 @@ def main() -> int:
     ap.add_argument("--bitcoin-cli", required=True)
     ap.add_argument("--datadir", required=True)
     ap.add_argument("--network", default="regtest")
+    ap.add_argument("--attacker-db", action="append", default=[])
+    ap.add_argument("--no-payout-rule", action="store_true")
+    ap.add_argument("--attack-address", default=None)
     a = ap.parse_args()
     max_target = target(MAX_TARGET_BITS[a.network])
     window_shares, maturity = WINDOW.get(a.network, DEFAULT_WINDOW)
@@ -99,19 +112,86 @@ def main() -> int:
         return f["miner_bitcoin_address"], difficulty(int(f["bits"], 16))
 
     known_block = {}
+    xbt_headers = {}
+
+    def xbt_header(h):
+        """Knots' header for XBT block `h`, or None when Knots does not know it."""
+        if h not in xbt_headers:
+            try:
+                xbt_headers[h] = btc("getblockheader", h)
+            except subprocess.CalledProcessError:
+                xbt_headers[h] = None
+        return xbt_headers[h]
+
+    def xbt_prev(h):
+        return full(h)["bitcoin_header"]["prev_blockhash"]
 
     def xbt_parent_exists(h):
         """Whether the share's XBT parent block is one Knots knows (any branch)."""
-        prev = full(h)["bitcoin_header"]["prev_blockhash"]
+        prev = xbt_prev(h)
         if prev not in known_block:
-            try:
-                btc("getblockheader", prev)
-                known_block[prev] = True
-            except subprocess.CalledProcessError:
-                known_block[prev] = False
+            known_block[prev] = xbt_header(prev) is not None
         return known_block[prev]
 
+    paying_chains = {}
+
+    def paying_chain(paying):
+        """Hashes on the XBT chain ending at `paying`, back 1,000 blocks (Shoal's regtest depth)."""
+        if paying not in paying_chains:
+            chain = set()
+            h = paying
+            for _ in range(1001):
+                hdr = xbt_header(h)
+                if hdr is None:
+                    break
+                chain.add(h)
+                if "previousblockhash" not in hdr:
+                    break
+                h = hdr["previousblockhash"]
+            paying_chains[paying] = chain
+        return paying_chains[paying]
+
+    def eligible(share_hash, paying):
+        """Shoal's payout rule for a window share or uncle, paid by a share on `paying`."""
+        if a.no_payout_rule:
+            return True
+        f = full(share_hash)
+        if f is None:
+            return False
+        if f.get("prev_share_blockhash", f.get("prev_blockhash", "")) in ("", "0" * 64):
+            return True  # the genesis share
+        prev = f["bitcoin_header"]["prev_blockhash"]
+        chain = paying_chain(paying)
+        if prev in chain:
+            return True
+        hdr = xbt_header(prev)
+        return hdr is not None and hdr.get("previousblockhash") in chain
+
+    # Addresses that mined on a fabricated XBT parent, in any store (attackers' included).
+    dead_addresses = set()
+    dead_shares = 0
+    for d in a.db + a.attacker_db:
+        top = cli(d, "info")["chain_tip_height"]
+        for e in cli(d, "dag", "--to", str(top + 50), "--num", str(top + 100))["entries"]:
+            if e.get("height", 1) == 0:
+                continue
+            h = e["blockhash"]
+            if h not in full_cache:
+                try:
+                    full_cache[h] = cli(d, "share", "--hash", h, "--full")[0]
+                except (subprocess.CalledProcessError, IndexError, json.JSONDecodeError):
+                    continue
+            if not xbt_parent_exists(h):
+                dead_shares += 1
+                dead_addresses.add(full_cache[h]["miner_bitcoin_address"])
+    if dead_shares:
+        print(f"shares on a fabricated XBT parent in any store: {dead_shares}")
+    if dead_addresses:
+        print(f"addresses that mined on a fabricated XBT parent: {sorted(dead_addresses)}")
+
     checked = failed = 0
+    txs_by_miner = {}
+    paid_to_attacker = 0
     paid_to_dead = 0
     paid_total = 0
     all_payees = set()
@@ -135,16 +215,22 @@ def main() -> int:
             cursor = by_hash.get(cursor["prev_blockhash"])
         weights = {}
         n_uncles = 0
-        w_dead = 0
+        n_ineligible = 0
+        paying = f["bitcoin_header"]["prev_blockhash"]
         for w in chain[skip:]:
-            if w["height"] > 0 and not xbt_parent_exists(w["blockhash"]):
-                w_dead += 10 * difficulty(int(w["bits"]))
+            w_ok = eligible(w["blockhash"], paying)
             bonus = 0
             for u in w["uncles"]:
+                n_uncles += 1
+                if not eligible(uncle_hash(u), paying):
+                    n_ineligible += 1
+                    continue
                 u_addr, u_diff = uncle_info(uncle_hash(u))
                 weights[u_addr] = weights.get(u_addr, 0) + 9 * u_diff
                 bonus += u_diff
-                n_uncles += 1
+            if not w_ok:
+                n_ineligible += 1
+                continue
             addr = w["miner_bitcoin_address"]
             weights[addr] = weights.get(addr, 0) + 10 * difficulty(int(w["bits"])) + bonus
         block = btc("getblock", block_hash, "2")
@@ -166,27 +252,78 @@ def main() -> int:
             expected[addr] = amt
             distributed += amt
         checked += 1
-        if total_w:
-            paid_to_dead += total * w_dead // total_w
         paid_total += total
+        for addr, sats in paid.items():
+            if addr in dead_addresses:
+                paid_to_dead += sats
+            if addr == a.attack_address:
+                paid_to_attacker += sats
         ok = expected == paid
         if not ok:
             failed += 1
         all_payees.update(paid)
+        row = txs_by_miner.setdefault(s["miner_bitcoin_address"], [0, 0, 0])
+        row[0] += 1
+        row[1] += len(block["tx"]) - 1
+        row[2] += total
         print(
             f"share {s['height']} -> block {block['height']} {block_hash[:16]}: "
             f"window {len(chain[skip:])} shares (skip {skip}), {n_uncles} uncles, "
+            f"{n_ineligible} ineligible, {len(block['tx']) - 1} txs, "
             f"{len(expected)} payees, {'OK' if ok else 'MISMATCH'}"
         )
         if not ok:
             print(f"  expected {expected}\n  paid     {paid}")
     print(f"payees seen across blocks: {len(all_payees)}")
+    for addr, (n_blocks, n_txs, value) in sorted(txs_by_miner.items()):
+        print(f"TEMPLATES miner {addr}: {n_blocks} blocks, {n_txs} txs, {value} sats paid out")
     dead_main = [h for h in by_hash if by_hash[h]["height"] > 0 and not xbt_parent_exists(h)]
     print(
         f"DEAD-TEMPLATE main-chain shares on a fabricated XBT parent: {len(dead_main)}; "
-        f"paid to them by real blocks: {paid_to_dead} of {paid_total} sats "
+        f"paid to their miners by real blocks: {paid_to_dead} of {paid_total} sats "
         f"({100.0 * paid_to_dead / max(paid_total, 1):.1f}%)"
     )
+
+    if a.attack_address:
+        print(
+            f"ATTACKER address {a.attack_address} paid by real blocks: {paid_to_attacker} of "
+            f"{paid_total} sats ({100.0 * paid_to_attacker / max(paid_total, 1):.1f}%)"
+        )
+
+    # Withholding statistic, from public data only: per miner, main-chain shares whose XBT
+    # header meets the XBT block target (on regtest, every share) and how many of those are
+    # blocks on the XBT chain.
+    per_miner = {}
+    for h, x in by_hash.items():
+        if x["height"] == 0:
+            continue
+        fx = full(h)
+        bh = fx["bitcoin_header"]
+        bits = int(bh["bits"], 16) if isinstance(bh["bits"], str) else int(bh["bits"])
+        meets = int(bh["block_hash"], 16) <= target(bits)
+        hdr = xbt_header(bh["block_hash"])
+        found = hdr is not None and hdr.get("confirmations", -1) >= 0
+        row = per_miner.setdefault(x["miner_bitcoin_address"], [0, 0])
+        row[0] += 1 if meets else 0
+        row[1] += 1 if found else 0
+    for addr, (meets, found) in sorted(per_miner.items()):
+        flag = "  <- WITHHOLDING?" if meets >= 5 and found == 0 else ""
+        print(f"BLOCKS miner {addr}: {meets} shares met the block target, {found} on the XBT chain{flag}")
+
+    # Copied shares (Monero P2Pool GHSA-fm6j-gf38-p925): one XBT header (one proof of work)
+    # behind more than one share, in any store.
+    header_owner = {}
+    dup = 0
+    for d in a.db + a.attacker_db:
+        for e in cli(d, "dag", "--to", str(tip + 50), "--num", str(tip + 100))["entries"]:
+            fx = full(e["blockhash"])
+            if fx is None or e.get("height", 1) == 0:
+                continue
+            xh = fx["bitcoin_header"]["block_hash"]
+            owner = header_owner.setdefault(xh, e["blockhash"])
+            if owner != e["blockhash"]:
+                dup += 1
+    print(f"COPIES shares sharing one XBT header with another share: {dup}")
 
     # Share DAG across all stores: main chain, uncles (referenced by a main-chain share) and
     # orphans (neither). Work = integer difficulty from each share's bits.

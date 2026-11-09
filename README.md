@@ -11,7 +11,7 @@ A shoal is a school of fish that moves together with no leader.
 Shoal is written in Rust. Everything it ships is Rust: the sharechain core (a fork of P2Poolv2), the
 XBT header and PoW, and the Stratum server. The Python in `model/` is analysis only, not shipped.
 
-**Status: phase 2, regtest prototype. Regtest only for now (testnet4 next); nothing here is for
+**Status: phase 2 done (regtest MVP); phase 3 (testnet4) next. Regtest only for now; nothing here is for
 mainnet, and the node refuses testnet4 and mainnet until XBT anchors are chosen.**
 
 | Milestone | Result |
@@ -21,15 +21,16 @@ mainnet, and the node refuses testnet4 and mainnet until XBT anchors are chosen.
 | M2 three nodes | Done: three nodes, 31 minutes, 19 blocks from three miners, identical sharechain tips, every payout exact |
 | M3 kill a node | Done: the founding node hard-killed mid-run; the other two kept mining and paying it, and it resynced in 2 s on restart |
 | M4 latency and uncles | Done: ~200 ms round trips between nodes, 10 s shares: 3.2% uncles, no orphans, no work lost, every payout exact including uncles |
-| M5 attacks | In progress: a node mining on a dead XBT parent was still paid 18.5% of real coinbases; the fix (only pay shares built on the real XBT chain) is being built |
-| M6 | Report ([plan.md](plan.md)) |
+| M5 attacks | Done: work on a fake XBT block, a wrong payout split and copied shares all earn nothing; withholding is shown publicly; a private sharechain fork trips the reorg alarm; every honest payout exact |
+| M6 report | Done: [phase2-result.md](phase2-result.md). Verdict: go for phase 3 (XBT testnet4) |
 
-The fork's full test suite passes on XBT (1,589 tests).
+The fork's full test suite passes on XBT (1,613 tests).
 
 | File | What |
 |---|---|
 | [design.md](design.md) | Sharechain format, how DATUM gateways plug in, payouts and coinbase limits, small miners, latency, attacks |
 | [plan.md](plan.md) | Phase 2: a three-miner regtest prototype |
+| [phase2-result.md](phase2-result.md) | Phase 2 results, attacks and the verdict for phase 3 |
 | [research/prior-art.md](research/prior-art.md) | Survey of P2Pool v1, P2Poolv2, Monero P2Pool, c2pool, Braidpool, Hashpool and others |
 | [crates/shoal-header](crates/shoal-header) | XBT 164-byte header v2 and block types with a rust-bitcoin-shaped API |
 | [crates/shoal-stratum](crates/shoal-stratum) | The Stratum V1 dialect XBT ASICs speak: job notify, submit parsing, header rebuild |

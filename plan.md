@@ -25,7 +25,15 @@ Stress run first (share target stuck at its easiest, 1.3 s shares, same delay): 
 uncles (15.5%), 37 orphans (2.4%), tips identical, PPLNS 1,171/1,171 to the satoshi.
 Regtest-only fork changes for it: fractional stratum difficulty (1/1024 units), and the run sets
 the genesis (ASERT anchor) time and target (`SHOAL_REGTEST_GENESIS_TIME` / `_BITS`).
-Next: M5 (attacks). Dead-template gap shown (below); implementing upstream's #652 design for XBT.
+**M5 done** (2026-11-09): the dead-template gap (below) is closed by upstream's #652 design,
+built for XBT in the fork (`xbt_chain.rs`: XBT header store, headers carried with shares,
+acceptance needs a known XBT prev, coinbases pay only shares on or one block off the paying XBT
+chain). Attack runs (`ATTACK_NODE=3`, fork feature `shoal-attack`, `ATTACK_MODE=...`), every
+honest coinbase exact in all of them: fake XBT parent 0% paid (was 18.5%); wrong split invalid,
+attacker 0 sats; copied shares rejected, 0 shares sharing a proof of work; withholding shares
+paid (a non-goal) and shown by the public statistic (29 shares at the block target, 0 blocks); a
+heavier private fork won and both honest nodes raised the sharechain reorg alarm. Fork suite
+1,613 passed. Results and verdict: [phase2-result.md](phase2-result.md) (M6).
 
 ## Goal of phase 2
 Show, on regtest only, that three miners with **no pool operator** can mine into one sharechain,
