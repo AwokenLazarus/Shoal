@@ -37,6 +37,7 @@ Every run: three Knots-BLAKE2b regtest nodes, three Shoal nodes, three CPU miner
 | M5 block withholding | node 3 never submits blocks, 15 min | Its shares are accepted and paid, as designed (no pool can stop this), and the public statistic shows it: **29 shares that met the block target, 0 blocks**, against ~90% for honest miners |
 | M5 private sharechain fork | node 3, with more hashrate than the other two together, mines alone for 5 min, then publishes | Its heavier chain replaced the honest one, and **both honest nodes raised the reorg alarm**; 9 honest shares lost; 73/73 exact |
 | Mixed mempool policy | node 3's Knots refuses transactions under 50 sat/vB; a wallet sends one every 5 s at 1 or 100 sat/vB, 15 min (`MIXED_POLICY=1`) | Templates differed (node 3: 1 transaction in 24 blocks; nodes 1 and 2: 23 in 32 and 6 in 28); every block still paid the shared window: 84/84 exact, identical tips |
+| Real ASIC (Innosilicon S11, 4.2 TH/s) | node 3 serves the S11 over the LAN at difficulty 4096, nodes 1 and 2 keep CPU miners, 40 min (`ASIC_NODE=3`) | The S11 ran at its usual hash rate (0 rejected and 0 hardware errors when sampled early in the run). 391 of its shares on the main chain, 377 of them XBT blocks; identical tips; 0 invalid; 460/460 exact |
 
 Fork test suite (`cargo test --workspace`, xbt-lab): 1,613 passed, 0 failed, 6 ignored (fixture tools and DNS-seed tests).
 
@@ -62,8 +63,6 @@ never store it. In honest runs no share was ever judged ineligible.
 - **XBT testnet4 parameters**: the sharechain's genesis time and target are chosen at launch, so
   a months-old genesis can't pin the difficulty. Also needed: Shoal's DNS seeds and a long-lived
   host.
-- **One real BLAKE2b ASIC on regtest** before any testnet: so far only CPU miners have spoken
-  our Stratum dialect.
 - **Coordinated validity changes**: the payout rule changes which coinbases are valid, so every
   node must run it from the start of a chain (true for any Shoal network so far).
 - **Upstream**: offer the #652 work back to P2Poolv2 if they want it.

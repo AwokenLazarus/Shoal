@@ -107,8 +107,8 @@ testnet4, mainnet, any announcement.
   calls it once, only to log the network difficulty. Harmless.
 
 ## Risks to watch
-- Real BLAKE2b ASIC firmware vs our Stratum: regtest only has CPU miners; test against one real
-  ASIC on regtest before any testnet (a Goldshell or Iceriver on the LAN, if one is available).
+- Real BLAKE2b ASIC firmware vs our Stratum: **tested 2026-11-09** with an Innosilicon S11 on
+  regtest (`ASIC_NODE=3`, 40 min, difficulty 4096): usual hash rate, 460/460 coinbases exact.
 - P2Poolv2 upstream churn: pin v0.16.3, rebase deliberately, review its share validation ourselves.
 - Regtest difficulty is tiny: use a fixed share target or a faster miner so the 10 s cadence is real.
 

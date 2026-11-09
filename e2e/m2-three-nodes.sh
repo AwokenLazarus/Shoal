@@ -56,6 +56,12 @@ ATTACK_MODE=${ATTACK_MODE:-}
 ATTACK_THREADS=${ATTACK_THREADS:-}
 ATTACK_ADDR=""
 MIXED_POLICY=${MIXED_POLICY:-}
+# ASIC_NODE=<2|3>: that node serves Stratum on the LAN (0.0.0.0) for a real ASIC instead of a
+# CPU miner, at ASIC_DIFF and never below it (pool units, 1/1024 of difficulty 1 on regtest;
+# default 4,194,304 = difficulty 4096, about one submission per 4 s at 4.2 TH/s). The script prints the URL, user and password to set on the miner.
+ASIC_NODE=${ASIC_NODE:-}
+ASIC_DIFF=${ASIC_DIFF:-4194304}
+LAN_IP=${LAN_IP:-$(hostname -I | awk '{print $1}')}
 if [ -n "$ATTACK_NODE" ] && [ ! -x "$ATTACK_BIN" ]; then echo "FAIL: ATTACK_BIN not executable"; exit 1; fi
 RUN=${RUN:-$HOME/shoal/e2e/m2-$(date -u +%Y%m%dT%H%M%SZ)}
 N=3
@@ -187,11 +193,11 @@ path = "$RUN/shoal$i/store.db"
 pplns_ttl_days = 7
 
 [stratum]
-hostname = "127.0.0.1"
+$(if [ "$i" = "$ASIC_NODE" ]; then echo 'hostname = "0.0.0.0"'; echo "start_difficulty = $ASIC_DIFF"
+  echo "minimum_difficulty = $ASIC_DIFF"; else
+  echo 'hostname = "127.0.0.1"'; echo "start_difficulty = $STRATUM_DIFF"; echo "minimum_difficulty = 1"
+  [ -n "$STRATUM_MAX_DIFF" ] && echo "maximum_difficulty = $STRATUM_MAX_DIFF"; fi)
 port = $(stratum_port "$i")
-start_difficulty = $STRATUM_DIFF
-minimum_difficulty = 1
-${STRATUM_MAX_DIFF:+maximum_difficulty = $STRATUM_MAX_DIFF}
 solo_address = "${PAYOUT[$i]}"
 bootstrap_address = "${PAYOUT[1]}"
 zmqpubhashblock = "tcp://127.0.0.1:$(zmq_port "$i")"
@@ -245,6 +251,10 @@ wait_stratum() {
 }
 start_miner() {
   local i=$1 secs=$2 threads=$THREADS
+  if [ "$i" = "$ASIC_NODE" ]; then
+    echo "ASIC: set the miner to stratum+tcp://$LAN_IP:$(stratum_port "$i") user ${PAYOUT[$i]}.asic pass p2p=${SHARE_ADDR[$i]}"
+    return 0
+  fi
   if [ "$i" = "$ATTACK_NODE" ] && [ -n "$ATTACK_THREADS" ]; then threads=$ATTACK_THREADS; fi
   setsid timeout -k 5 "$secs" "$GRIND" --port "$(stratum_port "$i")" --user "${PAYOUT[$i]}.cpu$i" \
     --pass "p2p=${SHARE_ADDR[$i]}" --threads "$threads" --secs "$secs" >>"$RUN/logs$i/grind.log" 2>&1 &
@@ -332,7 +342,7 @@ while [ "$(date +%s)" -lt "$END_AT" ]; do
   fi
   if [ "$now" -ge "$NEXT_PROGRESS" ]; then progress; NEXT_PROGRESS=$((NEXT_PROGRESS + 300)); fi
 done
-for i in $(seq $N); do wait "${MINER_PID[$i]}" 2>/dev/null || true; done
+for i in $(seq $N); do [ "$i" = "$ASIC_NODE" ] || wait "${MINER_PID[$i]}" 2>/dev/null || true; done
 # Let the last shares propagate before stopping the nodes.
 sleep 20
 
