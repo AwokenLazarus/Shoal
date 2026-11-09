@@ -58,7 +58,7 @@ Full survey with versions, licences and links: `research/prior-art.md` (2026-11-
 |---|---|---|
 | **P2Poolv2** (github.com/p2poolv2/p2poolv2) | Rust, MIT/Apache-2.0; v0.16.3 on 2026-11-06, ~330 commits in 12 weeks; testnet4 only | **Fork base for the sharechain core.** 10 s shares, ASERT difficulty, up to 3 uncles at depth 3, PPLNS in the coinbase, every node rebuilds and checks the payout, its own SV1 server. It has already fixed the copied-share bug class that hit Monero P2Pool in June 2026. |
 | **Monero P2Pool** | C++, GPL-3.0; mainnet for years | **Design reference** for sharechain rules: 10 s shares, 2160-share window, uncles, mini/nano chains for small miners, and its June 2026 critical bug (GHSA-fm6j-gf38-p925: one share copied ~12,000 times) as a test case. |
-| **c2pool**, binary `c2pool-bip110` | C++, AGPL-3.0; very active; labelled experimental | **The first BLAKE2b sharechain, already live on this chain.** A C++ reimplementation of P2Pool v1 (30 s shares, 8640-share window, no uncles). Reference for header v2 and Stratum handling, and a possible collaborator. Not a fork base (AGPL C++, v1 design). |
+| **c2pool**, binary `c2pool-bip110` | C++, AGPL-3.0; very active; labelled experimental | **The first BLAKE2b sharechain, already live on this chain.** A C++ reimplementation of P2Pool v1 (30 s shares, 8640-share window, no uncles). Multi-coin project: read as a reference for header v2 and Stratum handling only. Not a fork base (AGPL C++, v1 design), and not a partner: Shoal is XBT-only. |
 | **RATUM** | Rust, AGPL-3.0 | Reference for the Sia-dialect SV1 and coinbase sizing on header v2. Read, never copy. |
 | **Braidpool** | Rust, AGPL; research | Design reference only (DAG of sub-second shares, FROST payout). It solves problems this chain does not have. |
 | **Hydrapool** | Rust, AGPL | Not a base: centralized PPLNS/solo packaging of P2Poolv2's library; P2Poolv2 now has the same mode built in. |
@@ -86,10 +86,9 @@ kept as a rebasable patch series, Shoal builds its own small sharechain on `prim
 following Monero's rules. Upstream churn is real (two P2Poolv2 chain resets in October 2026), so
 the fork pins a tag and rebases deliberately.
 
-**Also decide:** whether to work with c2pool-bip110 instead of beside it. It already runs on this
-chain. Shoal differs in uncles and 10 s shares, in using the miners' own DATUM gateways and full
-nodes for templates, and in being Rust and MIT/Apache. Two small sharechains would split the hash,
-which is the one thing a sharechain can't afford.
+**c2pool-bip110** already runs a sharechain on this chain, as one binary of a multi-coin project.
+Shoal is XBT-only and does not work with it. Shoal differs in uncles and 10 s shares, in using the
+miners' own full nodes for templates, and in being Rust and MIT/Apache.
 
 Our own crates are used by path or git dependency, never copied. A third-party base is a real
 GitHub fork with our changes on top, never vendored source.
