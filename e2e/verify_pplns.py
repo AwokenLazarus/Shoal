@@ -17,7 +17,10 @@ must pay from the sharechain alone, and compare with the coinbase Knots accepted
              only if its XBT parent is on the paying share's XBT chain (an ancestor of, or
              equal to, the paying share's XBT parent) or a child of a block on it. Ineligible
              shares keep their slot and weigh 0; a nephew gets no bonus for an ineligible uncle.
-             The genesis share is always paid. XBT ancestry is read from Knots.
+             XBT ancestry is read from Knots.
+  genesis  = the genesis share is never paid (it weighs 0 under either rule). A share whose
+             window holds nothing else (the first share of a chain) may pay its whole coinbase
+             to any one address; the checker accepts exactly one payee there.
              `--no-payout-rule` checks upstream's rule instead.
 
 With `--attacker-db`, that store is the attacking node's: it is left out of the tip check and
@@ -218,6 +221,8 @@ def main() -> int:
         n_ineligible = 0
         paying = f["bitcoin_header"]["prev_blockhash"]
         for w in chain[skip:]:
+            if w["height"] == 0:
+                continue  # the genesis share is never paid
             w_ok = eligible(w["blockhash"], paying)
             bonus = 0
             for u in w["uncles"]:
@@ -243,6 +248,9 @@ def main() -> int:
             addr = o["scriptPubKey"].get("address", o["scriptPubKey"]["hex"])
             paid[addr] = paid.get(addr, 0) + sats
             total += sats
+        if not weights:
+            # The first share of a chain: one payee of its own choosing takes everything.
+            weights = {addr: 1 for addr in paid} if len(paid) == 1 else {"<one payee>": 1}
         total_w = sum(weights.values())
         expected = {}
         distributed = 0
