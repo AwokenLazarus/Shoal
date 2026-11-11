@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Independent PPLNS check for a Shoal regtest run (test tool, not shipped).
+"""Independent PPLNS check for a Shoal regtest or testnet4 run (test tool, not shipped).
 
 For every sharechain share whose XBT block is on the main chain, recompute what its coinbase
 must pay from the sharechain alone, and compare with the coinbase Knots accepted:
@@ -22,6 +22,13 @@ must pay from the sharechain alone, and compare with the coinbase Knots accepted
              window holds nothing else (the first share of a chain) may pay its whole coinbase
              to any one address; the checker accepts exactly one payee there.
              `--no-payout-rule` checks upstream's rule instead.
+  non-share blocks = a submission can meet the XBT block target but not the share target
+             (testnet4's 20-minute minimum-difficulty blocks; regtest). It is a block that no
+             share records. Every such block carrying Shoal's commitment output (OP_RETURN,
+             32 bytes) and paying only addresses that mined shares on this chain is checked
+             too: its coinbase must equal the payout of a share on one of the main-chain shares
+             around it (its parent share is hidden in the commitment hash, so candidates are
+             tried, nearest first).
 
 With `--attacker-db`, that store is the attacking node's: it is left out of the tip check and
 the main chain, and the payout to the addresses of shares on fabricated XBT parents (in any
@@ -35,6 +42,7 @@ Usage: verify_pplns.py --cli P2POOLV2_CLI --db STORE [--db STORE ...]
                        --bitcoin-cli BITCOIN_CLI --datadir DIR [--network regtest]
 """
 import argparse
+import concurrent.futures
 import json
 import subprocess
 import sys
@@ -68,6 +76,7 @@ def main() -> int:
     ap.add_argument("--attacker-db", action="append", default=[])
     ap.add_argument("--no-payout-rule", action="store_true")
     ap.add_argument("--attack-address", default=None)
+    ap.add_argument("--jobs", type=int, default=4, help="p2poolv2_cli processes at a time")
     a = ap.parse_args()
     max_target = target(MAX_TARGET_BITS[a.network])
     window_shares, maturity = WINDOW.get(a.network, DEFAULT_WINDOW)
@@ -107,6 +116,13 @@ def main() -> int:
                 except (subprocess.CalledProcessError, IndexError, json.JSONDecodeError):
                     continue
         return full_cache.get(h)
+
+    def prefetch(hashes):
+        """Load many shares' full data at once (one p2poolv2_cli process per share, so long
+        sharechains take a while; `--jobs` runs several at a time)."""
+        todo = [h for h in hashes if h not in full_cache]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=a.jobs) as pool:
+            list(pool.map(full, todo))
 
     def uncle_info(h):
         f = full(h)
@@ -170,6 +186,8 @@ def main() -> int:
         hdr = xbt_header(prev)
         return hdr is not None and hdr.get("previousblockhash") in chain
 
+    prefetch(list(by_hash) + [uncle_hash(u) for x in shares for u in x["uncles"]])
+
     # Addresses that mined on a fabricated XBT parent, in any store (attackers' included).
     dead_addresses = set()
     dead_shares = 0
@@ -192,34 +210,31 @@ def main() -> int:
     if dead_addresses:
         print(f"addresses that mined on a fabricated XBT parent: {sorted(dead_addresses)}")
 
-    checked = failed = 0
-    txs_by_miner = {}
-    paid_to_attacker = 0
-    paid_to_dead = 0
-    paid_total = 0
-    all_payees = set()
-    for s in sorted(shares, key=lambda s: s["height"]):
-        if s["height"] == 0:
-            continue
-        f = full(s["blockhash"])
-        block_hash = f["bitcoin_header"]["block_hash"]
-        try:
-            hdr = btc("getblockheader", block_hash)
-        except subprocess.CalledProcessError:
-            continue  # not a block (share only)
-        if hdr.get("confirmations", -1) < 0:
-            continue  # stale block
+    def coinbase_paid(block):
+        """The coinbase's nonzero outputs per address, and their total."""
+        paid = {}
+        total = 0
+        for o in block["tx"][0]["vout"]:
+            sats = round(o["value"] * 1e8)
+            if sats == 0:
+                continue
+            addr = o["scriptPubKey"].get("address", o["scriptPubKey"]["hex"])
+            paid[addr] = paid.get(addr, 0) + sats
+            total += sats
+        return paid, total
+
+    def expected_payout(parent_hash, height, paying, paid, total):
+        """What a share at `height` on `parent_hash`, building on XBT block `paying`, must pay."""
         # Window: from the parent back, skip the immature shares, then take the window.
-        skip = min(maturity - 1, max(s["height"] - maturity, 0))
+        skip = min(maturity - 1, max(height - maturity, 0))
         chain = []
-        cursor = by_hash.get(s["prev_blockhash"])
+        cursor = by_hash.get(parent_hash)
         while cursor is not None and len(chain) < skip + window_shares:
             chain.append(cursor)
             cursor = by_hash.get(cursor["prev_blockhash"])
         weights = {}
         n_uncles = 0
         n_ineligible = 0
-        paying = f["bitcoin_header"]["prev_blockhash"]
         for w in chain[skip:]:
             if w["height"] == 0:
                 continue  # the genesis share is never paid
@@ -238,16 +253,6 @@ def main() -> int:
                 continue
             addr = w["miner_bitcoin_address"]
             weights[addr] = weights.get(addr, 0) + 10 * difficulty(int(w["bits"])) + bonus
-        block = btc("getblock", block_hash, "2")
-        paid = {}
-        total = 0
-        for o in block["tx"][0]["vout"]:
-            sats = round(o["value"] * 1e8)
-            if sats == 0:
-                continue
-            addr = o["scriptPubKey"].get("address", o["scriptPubKey"]["hex"])
-            paid[addr] = paid.get(addr, 0) + sats
-            total += sats
         if not weights:
             # The first share of a chain: one payee of its own choosing takes everything.
             weights = {addr: 1 for addr in paid} if len(paid) == 1 else {"<one payee>": 1}
@@ -259,6 +264,33 @@ def main() -> int:
             amt = total - distributed if i == len(order) - 1 else total * weights[addr] // total_w
             expected[addr] = amt
             distributed += amt
+        return expected, len(chain[skip:]), skip, n_uncles, n_ineligible
+
+    checked = failed = 0
+    txs_by_miner = {}
+    paid_to_attacker = 0
+    paid_to_dead = 0
+    paid_total = 0
+    all_payees = set()
+    share_blocks = set()
+    for s in sorted(shares, key=lambda s: s["height"]):
+        if s["height"] == 0:
+            continue
+        f = full(s["blockhash"])
+        block_hash = f["bitcoin_header"]["block_hash"]
+        try:
+            hdr = btc("getblockheader", block_hash)
+        except subprocess.CalledProcessError:
+            continue  # not a block (share only)
+        if hdr.get("confirmations", -1) < 0:
+            continue  # stale block
+        share_blocks.add(block_hash)
+        paying = f["bitcoin_header"]["prev_blockhash"]
+        block = btc("getblock", block_hash, "2")
+        paid, total = coinbase_paid(block)
+        expected, n_window, skip, n_uncles, n_ineligible = expected_payout(
+            s["prev_blockhash"], s["height"], paying, paid, total
+        )
         checked += 1
         paid_total += total
         for addr, sats in paid.items():
@@ -276,12 +308,89 @@ def main() -> int:
         row[2] += total
         print(
             f"share {s['height']} -> block {block['height']} {block_hash[:16]}: "
-            f"window {len(chain[skip:])} shares (skip {skip}), {n_uncles} uncles, "
+            f"window {n_window} shares (skip {skip}), {n_uncles} uncles, "
             f"{n_ineligible} ineligible, {len(block['tx']) - 1} txs, "
             f"{len(expected)} payees, {'OK' if ok else 'MISMATCH'}"
         )
         if not ok:
             print(f"  expected {expected}\n  paid     {paid}")
+
+    # Blocks that are not shares. A submission can meet the XBT block target without meeting
+    # the share target (testnet4's 20-minute min-difficulty blocks, regtest): the node submits
+    # the block, but no share records it. Its coinbase carries Shoal's commitment output
+    # (OP_RETURN, 32 bytes) and pays the window of the share that was the tip when the job was
+    # made. The commitment is a hash, so that parent is found by trying the shares around the
+    # block: those whose XBT parent is the block or the block's parent, their parents, and the
+    # shares stamped near the block. The block passes if some candidate's payout matches its
+    # coinbase exactly.
+    by_xbt_prev = {}
+    for h in by_hash:
+        if by_hash[h]["height"] > 0:
+            by_xbt_prev.setdefault(xbt_prev(h), []).append(h)
+    genesis = next(x for x in shares if x["height"] == 0)
+    by_time = [x for x in shares if "timestamp" in x]
+    anchor = xbt_header(full(genesis["blockhash"])["bitcoin_header"]["prev_blockhash"])
+    # Scan from the sharechain's anchor block (testnet4), or from height 1 when the anchor is
+    # not on this XBT chain (regtest's fixed genesis anchor); the time check below drops
+    # earlier blocks either way.
+    start = anchor["height"] + 1 if anchor is not None and anchor.get("confirmations", -1) >= 0 else 1
+    nonshare_ok = nonshare_failed = 0
+    foreign = after_tip = 0
+    sharechain_miners = {x["miner_bitcoin_address"] for x in shares if x["height"] > 0}
+    last_share_time = max(x.get("timestamp", 0) for x in shares)
+    best = btc("getblockcount")
+    for height in range(start, best + 1):
+        block_hash = subprocess.run(
+            [a.bitcoin_cli, f"-datadir={a.datadir}", "getblockhash", str(height)],
+            check=True, capture_output=True, text=True,
+        ).stdout.strip()
+        if block_hash in share_blocks:
+            continue
+        block = btc("getblock", block_hash, "2")
+        if block["time"] < genesis.get("timestamp", 0):
+            continue  # before this sharechain began (an earlier chain's block)
+        if not any(
+            o["scriptPubKey"]["hex"].startswith("6a20") and len(o["scriptPubKey"]["hex"]) == 68
+            for o in block["tx"][0]["vout"]
+        ):
+            continue  # not built by a Shoal node
+        if block["time"] > last_share_time + 120:
+            after_tip += 1
+            continue  # newer than this store's tip
+        paying = block["previousblockhash"]
+        paid, total = coinbase_paid(block)
+        if not set(paid) <= sharechain_miners:
+            foreign += 1
+            continue  # pays an address that never mined a share here: another miner's block
+        candidates = []
+        for h in by_xbt_prev.get(paying, []) + by_xbt_prev.get(block_hash, []):
+            for c in (h, by_hash[h]["prev_blockhash"]):
+                if c in by_hash and c not in candidates:
+                    candidates.append(c)
+        # Blocks can come faster than shares (regtest): then also try the main-chain shares
+        # stamped from 15 minutes before the block to 2 minutes after, latest first.
+        near = [x for x in by_time if block["time"] - 900 <= x["timestamp"] <= block["time"] + 120]
+        for x in sorted(near, key=lambda x: -x["timestamp"]):
+            if x["blockhash"] not in candidates:
+                candidates.append(x["blockhash"])
+        match = None
+        for c in candidates:
+            expected = expected_payout(c, by_hash[c]["height"] + 1, paying, paid, total)[0]
+            if expected == paid:
+                match = c
+                break
+        paid_total += total
+        all_payees.update(paid)
+        if match is None:
+            nonshare_failed += 1
+            print(f"block {height} {block_hash[:16]} (not a share): no candidate parent "
+                  f"of {len(candidates)} matches its coinbase, MISMATCH\n  paid {paid}")
+        else:
+            nonshare_ok += 1
+            print(f"block {height} {block_hash[:16]} (not a share): pays the window on share "
+                  f"{by_hash[match]['height']} ({len(candidates)} candidates), "
+                  f"{len(paid)} payees, OK")
+    failed += nonshare_failed
     print(f"payees seen across blocks: {len(all_payees)}")
     for addr, (n_blocks, n_txs, value) in sorted(txs_by_miner.items()):
         print(f"TEMPLATES miner {addr}: {n_blocks} blocks, {n_txs} txs, {value} sats paid out")
@@ -364,6 +473,10 @@ def main() -> int:
         f"DAG shares={len(entries)} main={len(main) - 1} uncles={len(uncles)} orphans={len(orphans)} "
         f"invalid={len(invalid)} uncle_rate={100.0 * len(uncles) / max(len(entries) - 1, 1):.1f}% "
         f"work_lost={lost:.2f}% orphan_rate={100.0 * len(orphans) / max(len(entries) - 1, 1):.1f}%"
+    )
+    print(
+        f"NON-SHARE BLOCKS checked={nonshare_ok + nonshare_failed} failed={nonshare_failed} "
+        f"(skipped: {foreign} paying addresses with no share here, {after_tip} after the tip)"
     )
     print(f"PPLNS checked={checked} failed={failed} tips={'same' if tips_ok else 'differ'}")
     return 1 if failed or checked == 0 or not tips_ok else 0
