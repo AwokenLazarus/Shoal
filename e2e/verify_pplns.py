@@ -76,6 +76,8 @@ def main() -> int:
     ap.add_argument("--attacker-db", action="append", default=[])
     ap.add_argument("--no-payout-rule", action="store_true")
     ap.add_argument("--attack-address", default=None)
+    ap.add_argument("--api", default=None,
+                    help="config of a running node with the same chain, for share lookups")
     ap.add_argument("--jobs", type=int, default=4, help="p2poolv2_cli processes at a time")
     a = ap.parse_args()
     max_target = target(MAX_TARGET_BITS[a.network])
@@ -88,6 +90,11 @@ def main() -> int:
         return run_json([a.bitcoin_cli, f"-datadir={a.datadir}", *args])
 
     def cli(db, *args):
+        if a.api and args[:1] == ("share",):
+            # Full share lookups from a running node's API (fast): opening a long store once
+            # per share takes about a second. Listings still come from the store, so the
+            # snapshot stays consistent.
+            return run_json([a.cli, "-c", a.api, *args])
         return run_json([a.cli, "--db-path", db, *args])
 
     # Tips must agree across stores.
