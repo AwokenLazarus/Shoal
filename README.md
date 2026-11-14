@@ -11,8 +11,9 @@ A shoal is a school of fish that moves together with no leader.
 Shoal is written in Rust. Everything it ships is Rust: the sharechain core (a fork of P2Poolv2), the
 XBT header and PoW, and the Stratum server. The Python in `model/` is analysis only, not shipped.
 
-**Status: phase 2 done (regtest MVP); phase 3 (testnet4) next. Regtest only for now; nothing here is for
-mainnet, and the node refuses testnet4 and mainnet until XBT anchors are chosen.**
+**Status: phase 3 (XBT testnet4). A 77-hour testnet4 trial passed ([phase3-testnet-result.md](phase3-testnet-result.md));
+the public testnet4 alpha for outside miners is being prepared: [TESTNET4-ALPHA.md](TESTNET4-ALPHA.md). Nothing here is
+for mainnet, and the node refuses mainnet until an XBT anchor is chosen.**
 
 | Milestone | Result |
 |---|---|
@@ -23,18 +24,22 @@ mainnet, and the node refuses testnet4 and mainnet until XBT anchors are chosen.
 | M4 latency and uncles | Done: ~200 ms round trips between nodes, 10 s shares: 3.2% uncles, no orphans, no work lost, every payout exact including uncles |
 | M5 attacks | Done: work on a fake XBT block, a wrong payout split and copied shares all earn nothing; withholding is shown publicly; a private sharechain fork trips the reorg alarm; every honest payout exact |
 | M6 report | Done: [phase2-result.md](phase2-result.md). Verdict: go for phase 3 (XBT testnet4) |
+| Testnet4 trial | Done: 77 hours, one node, one S11: 200 testnet4 blocks, other miners built on them, 193/193 coinbases exact ([phase3-testnet-result.md](phase3-testnet-result.md)) |
+| Testnet4 alpha | Preparing: outside miners run their own nodes ([TESTNET4-ALPHA.md](TESTNET4-ALPHA.md)) |
 
-The fork's full test suite passes on XBT (1,613 tests).
+The fork's full test suite passes on XBT (1,621 tests).
 
 | File | What |
 |---|---|
 | [design.md](design.md) | Sharechain format, how DATUM gateways plug in, payouts and coinbase limits, small miners, latency, attacks |
 | [plan.md](plan.md) | Phase 2: a three-miner regtest prototype |
 | [phase2-result.md](phase2-result.md) | Phase 2 results, attacks and the verdict for phase 3 |
+| [phase3-testnet-result.md](phase3-testnet-result.md) | Phase 3 testnet4 trial results |
+| [TESTNET4-ALPHA.md](TESTNET4-ALPHA.md), [testnet4/](testnet4/) | How to join the testnet4 alpha, with config templates |
 | [research/prior-art.md](research/prior-art.md) | Survey of P2Pool v1, P2Poolv2, Monero P2Pool, c2pool, Braidpool, Hashpool and others |
 | [crates/shoal-header](crates/shoal-header) | XBT 164-byte header v2 and block types with a rust-bitcoin-shaped API |
 | [crates/shoal-stratum](crates/shoal-stratum) | The Stratum V1 dialect XBT ASICs speak: job notify, submit parsing, header rebuild |
-| [crates/shoal-grind](crates/shoal-grind) | Multi-threaded CPU test miner for regtest |
+| [crates/shoal-grind](crates/shoal-grind) | Multi-threaded CPU test miner for regtest and testnet4 |
 | [e2e/](e2e/) | Regtest end-to-end runs (`m1-single-miner.sh`, `m2-three-nodes.sh`) and the independent payout checker `verify_pplns.py` |
 | [AwokenLazarus/p2poolv2](https://github.com/AwokenLazarus/p2poolv2) (`shoal/*` branches) | The sharechain core: our fork of P2Poolv2 |
 | [model/](model/) | `sharechain_model.py`: income noise, payees per coinbase, stale rates (`python3 model/sharechain_model.py`) |

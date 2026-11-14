@@ -1,0 +1,52 @@
+# Shoal node on the public XBT testnet4 sharechain. Copy, then edit the lines marked EDIT.
+# The sharechain's rules (genesis, share floor, window) are built into the binary: every node
+# of the alpha runs the same release.
+
+[network]
+listen_address = "/ip4/0.0.0.0/tcp/6884"   # open TCP 6884 inbound if you can, to help others join
+# Shoal's bootstrap node(s); add any other tester's node you know.
+dial_peers = ["/ip4/SHOAL_BOOTSTRAP_IP/tcp/6884"]   # EDIT: see TESTNET4-ALPHA.md
+dns_seed = false
+max_pending_incoming = 10
+max_pending_outgoing = 10
+max_established_incoming = 50
+max_established_outgoing = 50
+max_established_per_peer = 2
+max_workbase_per_second = 10
+max_miningshare_per_second = 100
+max_inventory_per_second = 100
+max_transaction_per_second = 100
+max_requests_per_second = 100
+dial_timeout_secs = 30
+
+[store]
+path = "/var/lib/shoal/store.db"   # EDIT: any directory the node may write
+pplns_ttl_days = 7
+
+[stratum]
+hostname = "0.0.0.0"                # your miners connect here; keep it on your LAN
+port = 3333
+start_difficulty = 4096             # an ASIC; a CPU miner wants 1 (set minimum_difficulty too)
+minimum_difficulty = 1
+solo_address = "tb1q..."            # EDIT: your testnet4 address
+bootstrap_address = "tb1q..."       # EDIT: same address (pays you if your share starts a chain)
+zmqpubhashblock = "tcp://127.0.0.1:28332"
+network = "testnet4"
+version_mask = "00000000"
+pool_signature = "Shoal"
+wait_for_chain_sync = false
+
+[bitcoinrpc]
+url = "http://127.0.0.1:48332"
+username = "shoal"                  # EDIT: rpcuser from bitcoin.conf
+password = "CHANGE-ME"              # EDIT: rpcpassword from bitcoin.conf
+
+[logging]
+file = "/var/lib/shoal/logs/shoal.log"
+console = false
+level = "info"
+stats_dir = "/var/lib/shoal/logs/stats"
+
+[api]
+hostname = "127.0.0.1"
+port = 46884

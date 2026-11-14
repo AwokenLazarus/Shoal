@@ -1,0 +1,13 @@
+[Unit]
+Description=Shoal sharechain node (XBT testnet4 alpha)
+After=network-online.target
+
+[Service]
+User=shoal
+ExecStart=/usr/local/bin/p2poolv2 --config /etc/shoal/config.toml
+Restart=on-failure
+RestartSec=30
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target
