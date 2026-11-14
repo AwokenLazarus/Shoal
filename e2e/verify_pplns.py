@@ -6,7 +6,7 @@ must pay from the sharechain alone, and compare with the coinbase Knots accepted
 
   window   = from the share's parent back: skip the shares not yet mature for it
              (min(maturity - 1, height - maturity)), then take `window` shares
-             (regtest: 12 and 4, Shoal's regtest params; other networks 120,960 and 6,048)
+             (regtest: 12 and 4; the testnet4 alpha: 8,640 and 360; mainnet 120,960 and 6,048)
   weight   = per payout address, 10 x each window share's integer difficulty
              (network max target // share target, rust-bitcoin's `Target::difficulty`);
              each uncle a window share includes adds 9 x the uncle's difficulty to the
@@ -48,7 +48,8 @@ import subprocess
 import sys
 
 MAX_TARGET_BITS = {"regtest": 0x207FFFFF, "testnet4": 0x1D00FFFF, "main": 0x1D00FFFF}
-WINDOW = {"regtest": (12, 4)}  # (window shares, maturity); see p2poolv2 xbt_params.rs
+# (window shares, maturity); see p2poolv2 xbt_params.rs. testnet4 = the public alpha chain.
+WINDOW = {"regtest": (12, 4), "testnet4": (8_640, 360)}
 DEFAULT_WINDOW = (120_960, 6_048)
 
 

@@ -27,7 +27,7 @@ for mainnet, and the node refuses mainnet until an XBT anchor is chosen.**
 | Testnet4 trial | Done: 77 hours, one node, one S11: 200 testnet4 blocks, other miners built on them, 193/193 coinbases exact ([phase3-testnet-result.md](phase3-testnet-result.md)) |
 | Testnet4 alpha | Preparing: outside miners run their own nodes ([TESTNET4-ALPHA.md](TESTNET4-ALPHA.md)) |
 
-The fork's full test suite passes on XBT (1,621 tests).
+The fork's full test suite passes on XBT (1,622 tests).
 
 | File | What |
 |---|---|
