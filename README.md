@@ -12,7 +12,7 @@ Shoal is written in Rust. Everything it ships is Rust: the sharechain core (a fo
 XBT header and PoW, and the Stratum server. The Python in `model/` is analysis only, not shipped.
 
 **Status: phase 3 (XBT testnet4). A 77-hour testnet4 trial passed ([phase3-testnet-result.md](phase3-testnet-result.md));
-the public testnet4 alpha for outside miners is being prepared: [TESTNET4-ALPHA.md](TESTNET4-ALPHA.md). Nothing here is
+the public testnet4 alpha is open to outside miners: [TESTNET4-ALPHA.md](TESTNET4-ALPHA.md). Nothing here is
 for mainnet, and the node refuses mainnet until an XBT anchor is chosen.**
 
 | Milestone | Result |
@@ -25,7 +25,7 @@ for mainnet, and the node refuses mainnet until an XBT anchor is chosen.**
 | M5 attacks | Done: work on a fake XBT block, a wrong payout split and copied shares all earn nothing; withholding is shown publicly; a private sharechain fork trips the reorg alarm; every honest payout exact |
 | M6 report | Done: [phase2-result.md](phase2-result.md). Verdict: go for phase 3 (XBT testnet4) |
 | Testnet4 trial | Done: 77 hours, one node, one S11: 200 testnet4 blocks, other miners built on them, 193/193 coinbases exact ([phase3-testnet-result.md](phase3-testnet-result.md)) |
-| Testnet4 alpha | Preparing: outside miners run their own nodes ([TESTNET4-ALPHA.md](TESTNET4-ALPHA.md)) |
+| Testnet4 alpha | Open since 2026-11-15: outside miners run their own nodes ([TESTNET4-ALPHA.md](TESTNET4-ALPHA.md)); [release alpha 1](https://github.com/AwokenLazarus/p2poolv2/releases/tag/shoal-testnet4-alpha-1) |
 
 The fork's full test suite passes on XBT (1,622 tests).
 

@@ -4,8 +4,8 @@
 
 [network]
 listen_address = "/ip4/0.0.0.0/tcp/6884"   # open TCP 6884 inbound if you can, to help others join
-# Shoal's bootstrap node(s); add any other tester's node you know.
-dial_peers = ["/ip4/SHOAL_BOOTSTRAP_IP/tcp/6884"]   # EDIT: see TESTNET4-ALPHA.md
+# Shoal's bootstrap node; add any other tester's node you know ("/ip4/<address>/tcp/6884").
+dial_peers = ["/dns4/shoal-testnet.lazarus-xbt.xyz/tcp/6884"]
 dns_seed = false
 max_pending_incoming = 10
 max_pending_outgoing = 10
