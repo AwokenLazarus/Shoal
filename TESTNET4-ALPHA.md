@@ -79,7 +79,9 @@ Keep the Stratum port on your own network: it is for your miners, not for the pu
 A CPU miner for testing comes with the release (`shoal-grind`; source in this repo under
 `crates/shoal-grind`): `shoal-grind --host <node> --port 3333 --threads 2 --user <payout
 address>.cpu --pass 'p2p=<share address>,d=1'`. At difficulty 1 one CPU thread finds a share
-every 10 to 20 minutes.
+every 10 to 20 minutes. The share difficulty follows the whole sharechain's hashrate (one share
+per 10 s): while an ASIC is mining on it, a CPU finds shares rarely, though its node still follows
+and checks the chain.
 
 ## 5. Check your payouts yourself
 A block pays the shares of the PPLNS window except the newest 360 (the maturity: an hour at
